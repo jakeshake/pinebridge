@@ -62,6 +62,22 @@ logging.getLogger("werkzeug").setLevel(logging.WARNING)
 zmq_client.connect()
 
 
+def _raw_body():
+    # request.data is empty for form-encoded bodies (curl -d's default), so
+    # read the raw bytes whatever the Content-Type is.
+    return request.get_data()
+
+
+def _redact(text):
+    if config.WEBHOOK_SECRET:
+        text = text.replace(config.WEBHOOK_SECRET, "<secret>")
+    return text
+
+
+def _without_secret(parsed_data):
+    return {k: v for k, v in parsed_data.items() if k != "secret"}
+
+
 def _secret_ok(parsed_data):
     if not config.REQUIRE_SECRET:
         return True
@@ -82,9 +98,9 @@ def health_check():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    raw_data = request.data
+    raw_data = _raw_body()
     logger.info("=" * 60)
-    logger.info(f"Webhook received. Raw: {raw_data}")
+    logger.info(f"Webhook received. Raw: {_redact(raw_data.decode('utf-8', 'replace'))}")
 
     try:
         parsed_data = parse_alert(raw_data)
@@ -160,7 +176,7 @@ def test_endpoint():
             }
         )
 
-    raw_data = request.data
+    raw_data = _raw_body()
     send_it = request.args.get("send", "0") == "1"
 
     try:
@@ -174,7 +190,9 @@ def test_endpoint():
             success, latency = zmq_client.send(translated)
             zmq_result = {"sent": success, "latency_ms": latency}
 
-        return jsonify({"status": "success", "parsed": parsed, "translated": translated, "zmq": zmq_result})
+        return jsonify(
+            {"status": "success", "parsed": _without_secret(parsed), "translated": translated, "zmq": zmq_result}
+        )
     except Exception as exc:
         return jsonify({"status": "error", "message": str(exc)}), 400
 

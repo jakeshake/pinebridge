@@ -76,7 +76,7 @@ def qty_to_lots(parsed_data, symbol):
 def price_to_pips(ref_price, target_price, pip_size):
     if ref_price is None or target_price is None:
         return 0.0
-    return abs(float(ref_price) - float(target_price)) / pip_size
+    return round(abs(float(ref_price) - float(target_price)) / pip_size, 2)
 
 
 def _now():
