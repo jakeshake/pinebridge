@@ -25,17 +25,17 @@ services:
       # cloudflared reaches this service over the internal compose network.
       - "5000:5000"
 
-  # dockur/windows: boots a real Windows VM (via KVM/QEMU) inside a
-  # container, running MT5 + the ZeroMQ EA. Requires the host to have
-  # /dev/kvm available (Unraid does, once virtualization is enabled in
-  # BIOS) and a Windows license/ISO you're entitled to use -- see
-  # docs/mt5-ea-setup.md.
+  # dockur/windows plus this repo's provisioning files (see
+  # mt5-windows/Dockerfile): boots a real Windows VM via KVM/QEMU and
+  # installs MT5 + the ZeroMQ EA on first boot. Requires /dev/kvm (Unraid
+  # has it once virtualization is enabled in BIOS) and a Windows license
+  # you're entitled to use -- see docs/mt5-ea-setup.md.
   mt5-windows:
-    image: dockurr/windows
+    build: ./mt5-windows
     container_name: mt5-windows
     environment:
       - VERSION=11
-      - RAM_SIZE=${RAM_SIZE:-4G}
+      - RAM_SIZE=${RAM_SIZE:-8G}
       - CPU_CORES=${CPU_CORES:-2}
       - DISK_SIZE=${DISK_SIZE:-64G}
       - USERNAME=${WINDOWS_USERNAME:-Docker}
@@ -55,6 +55,5 @@ services:
       - "5555:5555/tcp"  # ZeroMQ PULL socket -- signal-bridge connects here
     volumes:
       - ./data/windows:/storage
-      - ./mt5-windows/oem:/oem
     restart: unless-stopped
     stop_grace_period: 2m

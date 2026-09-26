@@ -17,27 +17,33 @@ from .parser import parse_alert
 
 
 def setup_logging():
-    os.makedirs(config.LOG_DIR, exist_ok=True)
     formatter = logging.Formatter(
         "[%(asctime)s] %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
     )
-
-    file_handler = TimedRotatingFileHandler(
-        os.path.join(config.LOG_DIR, "webhook.log"),
-        when="midnight",
-        interval=1,
-        backupCount=30,
-        encoding="utf-8",
-    )
-    file_handler.setFormatter(formatter)
 
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
 
     logger = logging.getLogger()
     logger.setLevel(config.LOG_LEVEL)
-    logger.addHandler(file_handler)
     logger.addHandler(console_handler)
+
+    # Host-mounted log dirs (e.g. Unraid appdata, owned by nobody:users) are
+    # often not writable by this container's non-root user; don't die over it.
+    try:
+        os.makedirs(config.LOG_DIR, exist_ok=True)
+        file_handler = TimedRotatingFileHandler(
+            os.path.join(config.LOG_DIR, "webhook.log"),
+            when="midnight",
+            interval=1,
+            backupCount=30,
+            encoding="utf-8",
+        )
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+    except OSError as exc:
+        logger.warning(f"File logging disabled ({config.LOG_DIR} not writable: {exc}); logging to console only")
+
     return logger
 
 

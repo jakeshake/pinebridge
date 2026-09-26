@@ -1,8 +1,20 @@
 # MT5 + EA Setup (mt5-windows container)
 
-The `mt5-windows` service runs [dockur/windows](https://github.com/dockur/windows),
-which boots a real Windows VM via KVM/QEMU inside a container, then
-auto-provisions it using the scripts in `mt5-windows/oem/`.
+The `mt5-windows` image (`mt5-windows/Dockerfile`) is
+[dockur/windows](https://github.com/dockur/windows) with this repo's
+`mt5-windows/oem/` files baked in. dockur boots a real Windows VM via
+KVM/QEMU, copies those files to `C:\OEM` during its unattended install, and
+runs `install.bat` in a visible window at first logon (as the auto-logged-on
+admin account). Its output goes to `C:\OEM\install.log`.
+
+Container environment variables are **not** visible inside the Windows
+guest, so the image's entrypoint (`mt5-windows/entry.sh`) writes the
+`MT5_*` settings to `C:\OEM\mt5.env` before dockur builds the install image;
+`setup-mt5.ps1` reads that file and deletes it. The broker password does
+still end up in `$InstallDir\config\startup.ini`, which MT5 reads at every
+launch. Note this only happens on the **first** boot of a fresh `/storage`
+-- changing `MT5_*` later won't reach an already-installed VM (update the
+login inside MT5 instead, or wipe `/storage` to reinstall).
 
 ## Prerequisites
 
@@ -27,7 +39,8 @@ auto-provisions it using the scripts in `mt5-windows/oem/`.
    then compiles the EA headlessly via MetaEditor.
 4. Writes a startup config (`$InstallDir\config\startup.ini`) that enables
    Algo Trading + DLL imports and attaches the EA to a chart, using
-   `MT5_LOGIN`/`MT5_PASSWORD`/`MT5_SERVER`/`MT5_SYMBOL` from your `.env`.
+   `MT5_LOGIN`/`MT5_PASSWORD`/`MT5_SERVER`/`MT5_SYMBOL` (from `.env` or the
+   Unraid template, via `C:\OEM\mt5.env` as described above).
 5. Creates a Startup-folder shortcut so MT5 launches automatically on every
    boot with that config, in portable mode (so its MQL5 data folder is
    `$InstallDir\MQL5`, next to the binaries).

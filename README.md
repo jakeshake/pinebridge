@@ -57,19 +57,20 @@ the **Apps** tab.
 ## Repo layout
 
 - `signal-bridge/` — the Flask + ZeroMQ webhook receiver
-- `mt5-windows/oem/` — provisioning scripts + EA source, mounted into the
-  dockur/windows VM
-- `unraid-templates/` — Community Applications XML templates
+- `mt5-windows/` — image built on dockur/windows; `oem/` holds the
+  provisioning scripts + EA source baked into it
+- `unraid-templates/` — Unraid container templates
 - `docs/` — setup guides for each piece
 
 ## Status
 
-The `signal-bridge` container is straightforward to verify locally (see
-its own test flow in `docs/tradingview-alert-format.md`). The
-`mt5-windows` provisioning script has **not** been verified end-to-end on
-real hardware — see the note at the top of
-[docs/mt5-ea-setup.md](docs/mt5-ea-setup.md) and its manual fallback steps.
-Issues and PRs welcome.
+The MT5 provisioning script (`mt5-windows/oem/setup-mt5.ps1`) has been run
+end-to-end on real Unraid hardware: MT5 installs, the EA compiles and
+auto-attaches, and it binds its ZeroMQ socket. See
+[docs/mt5-ea-setup.md](docs/mt5-ea-setup.md) for what was found along the
+way. Not yet tested: a completely fresh first boot of the packaged
+`tv-mt5-bridge-windows` image straight from the Unraid template, and a live
+TradingView → MT5 trade through the whole chain. Issues and PRs welcome.
 
 ## License
 

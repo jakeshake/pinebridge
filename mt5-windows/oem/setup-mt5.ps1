@@ -221,13 +221,26 @@ New-NetFirewallRule -DisplayName "MT5 ZeroMQ (tv-mt5-bridge)" -Direction Inbound
 
 # ---------------------------------------------------------------------------
 # 5. Startup config: enable Algo Trading + DLL imports, auto-attach the EA.
-#    Broker login/password/server come from environment variables so no
-#    credentials are ever baked into this repo or the VM image.
+#    Container env vars are NOT visible inside the Windows guest, so the
+#    image's entrypoint (mt5-windows/entry.sh) writes them to C:\OEM\mt5.env
+#    before dockur builds the install image. Read them from there, then
+#    delete the file so the broker password doesn't linger in C:\OEM.
 # ---------------------------------------------------------------------------
-$mt5Login    = $env:MT5_LOGIN
-$mt5Password = $env:MT5_PASSWORD
-$mt5Server   = $env:MT5_SERVER
-$mt5Symbol   = if ($env:MT5_SYMBOL) { $env:MT5_SYMBOL } else { "EURUSD" }
+$mt5Settings = @{}
+$envFile = "C:\OEM\mt5.env"
+if (Test-Path $envFile) {
+    foreach ($line in Get-Content $envFile) {
+        $key, $value = $line -split "=", 2
+        if ($key) { $mt5Settings[$key.Trim()] = "$value".Trim() }
+    }
+    Remove-Item $envFile -Force
+} else {
+    Write-Host "WARNING: $envFile not found -- MT5 will start without a broker login."
+}
+$mt5Login    = $mt5Settings["MT5_LOGIN"]
+$mt5Password = $mt5Settings["MT5_PASSWORD"]
+$mt5Server   = $mt5Settings["MT5_SERVER"]
+$mt5Symbol   = if ($mt5Settings["MT5_SYMBOL"]) { $mt5Settings["MT5_SYMBOL"] } else { "EURUSD" }
 
 $configPath = Join-Path $ConfigDir "startup.ini"
 @"

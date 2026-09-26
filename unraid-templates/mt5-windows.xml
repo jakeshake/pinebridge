@@ -1,38 +1,36 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>mt5-windows</Name>
-  <Repository>dockurr/windows</Repository>
-  <Registry>https://hub.docker.com/r/dockurr/windows</Registry>
+  <Repository>ghcr.io/jakeshake/tv-mt5-bridge-windows:latest</Repository>
+  <Registry>https://github.com/jakeshake/tv-mt5-bridge/pkgs/container/tv-mt5-bridge-windows</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
   <Support>https://github.com/jakeshake/tv-mt5-bridge/issues</Support>
   <Project>https://github.com/jakeshake/tv-mt5-bridge</Project>
-  <Overview>Runs a full Windows 11 VM (via dockur/windows, KVM/QEMU) with MetaTrader 5 and the TradingViewZeroMQExecutor EA auto-provisioned from the tv-mt5-bridge repo's mt5-windows/oem scripts. Requires /dev/kvm on the host (enable virtualization in BIOS) and your own Windows license for anything beyond evaluation use. See docs/mt5-ea-setup.md in the project repo.</Overview>
+  <Overview>Runs a full Windows 11 VM (dockur/windows, KVM/QEMU) that installs MetaTrader 5 and the TradingViewZeroMQExecutor EA by itself on first boot -- no files to download. First boot takes roughly 20-40 minutes (Windows install, then MT5 setup); watch it via the WebUI. Requires /dev/kvm on the host (enable virtualization in BIOS) and your own Windows license for anything beyond evaluation use.</Overview>
   <Category>Other:</Category>
   <WebUI>http://[IP]:[PORT:8006]</WebUI>
   <Icon>https://raw.githubusercontent.com/jakeshake/tv-mt5-bridge/main/docs/icon.png</Icon>
-  <ExtraParams>--device=/dev/kvm --device=/dev/net/tun --cap-add=NET_ADMIN</ExtraParams>
+  <ExtraParams>--device=/dev/kvm --device=/dev/net/tun --cap-add=NET_ADMIN --stop-timeout 120</ExtraParams>
   <PostArgs/>
   <CPUset/>
   <DateInstalled/>
   <DonateText/>
   <DonateLink/>
-  <Requires>Clone or download the tv-mt5-bridge repo on the Unraid host first so the oem/ folder below has something to point at: /mnt/user/appdata/tv-mt5-bridge/mt5-windows/oem</Requires>
+  <Requires>Virtualization (VT-x/AMD-V) enabled in BIOS so /dev/kvm exists. Test with a demo broker account first.</Requires>
   <Config Name="WebUI Port" Target="8006" Default="8006" Mode="tcp" Description="noVNC web viewer -- watch/control the Windows desktop in a browser" Type="Port" Display="always" Required="true" Mask="false">8006</Config>
   <Config Name="RDP Port" Target="3389" Default="3389" Mode="tcp" Description="Optional RDP access" Type="Port" Display="advanced" Required="false" Mask="false">3389</Config>
-  <Config Name="ZMQ Port" Target="5555" Default="5555" Mode="tcp" Description="ZeroMQ PULL socket -- signal-bridge connects here" Type="Port" Display="always" Required="true" Mask="false">5555</Config>
-  <Config Name="VERSION" Target="VERSION" Default="11" Mode="" Description="Windows version to install" Type="Variable" Display="advanced" Required="true" Mask="false">11</Config>
-  <Config Name="RAM_SIZE" Target="RAM_SIZE" Default="4G" Mode="" Description="RAM allocated to the VM" Type="Variable" Display="always" Required="true" Mask="false">4G</Config>
-  <Config Name="CPU_CORES" Target="CPU_CORES" Default="2" Mode="" Description="CPU cores allocated to the VM" Type="Variable" Display="always" Required="true" Mask="false">2</Config>
-  <Config Name="DISK_SIZE" Target="DISK_SIZE" Default="64G" Mode="" Description="Virtual disk size" Type="Variable" Display="always" Required="true" Mask="false">64G</Config>
-  <Config Name="USERNAME" Target="USERNAME" Default="Docker" Mode="" Description="Windows account username (not your broker login)" Type="Variable" Display="always" Required="true" Mask="false">Docker</Config>
-  <Config Name="PASSWORD" Target="PASSWORD" Default="" Mode="" Description="Windows account password (not your broker login)" Type="Variable" Display="always" Required="true" Mask="true"></Config>
-  <Config Name="MT5_LOGIN" Target="MT5_LOGIN" Default="" Mode="" Description="Your MT5 broker account login" Type="Variable" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="ZMQ Port" Target="5555" Default="5555" Mode="tcp" Description="ZeroMQ port the EA listens on -- signal-bridge connects to [Unraid IP]:this port" Type="Port" Display="always" Required="true" Mask="false">5555</Config>
+  <Config Name="MT5_LOGIN" Target="MT5_LOGIN" Default="" Mode="" Description="Your MT5 broker account number" Type="Variable" Display="always" Required="true" Mask="false"></Config>
   <Config Name="MT5_PASSWORD" Target="MT5_PASSWORD" Default="" Mode="" Description="Your MT5 broker account password" Type="Variable" Display="always" Required="true" Mask="true"></Config>
-  <Config Name="MT5_SERVER" Target="MT5_SERVER" Default="" Mode="" Description="Your broker's MT5 server name" Type="Variable" Display="always" Required="true" Mask="false"></Config>
-  <Config Name="MT5_SYMBOL" Target="MT5_SYMBOL" Default="EURUSD" Mode="" Description="Symbol to auto-attach the EA to on startup" Type="Variable" Display="advanced" Required="false" Mask="false">EURUSD</Config>
-  <Config Name="Storage" Target="/storage" Default="/mnt/user/appdata/mt5-windows/storage" Mode="rw" Description="Persistent Windows VM disk image" Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata/mt5-windows/storage</Config>
-  <Config Name="OEM" Target="/oem" Default="/mnt/user/appdata/tv-mt5-bridge/mt5-windows/oem" Mode="ro" Description="Provisioning scripts from the tv-mt5-bridge repo (install.bat, setup-mt5.ps1, EA files)" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/tv-mt5-bridge/mt5-windows/oem</Config>
+  <Config Name="MT5_SERVER" Target="MT5_SERVER" Default="" Mode="" Description="Your broker's MT5 server name, exactly as shown in MT5 (e.g. MetaQuotes-Demo)" Type="Variable" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="MT5_SYMBOL" Target="MT5_SYMBOL" Default="EURUSD" Mode="" Description="Chart symbol the EA attaches to on startup (the EA trades whatever symbol each signal names)" Type="Variable" Display="always" Required="false" Mask="false">EURUSD</Config>
+  <Config Name="RAM_SIZE" Target="RAM_SIZE" Default="8G" Mode="" Description="RAM allocated to the VM" Type="Variable" Display="always" Required="true" Mask="false">8G</Config>
+  <Config Name="CPU_CORES" Target="CPU_CORES" Default="2" Mode="" Description="CPU cores allocated to the VM" Type="Variable" Display="always" Required="true" Mask="false">2</Config>
+  <Config Name="DISK_SIZE" Target="DISK_SIZE" Default="64G" Mode="" Description="Virtual disk size" Type="Variable" Display="advanced" Required="true" Mask="false">64G</Config>
+  <Config Name="USERNAME" Target="USERNAME" Default="Docker" Mode="" Description="Windows account username (not your broker login)" Type="Variable" Display="advanced" Required="false" Mask="false">Docker</Config>
+  <Config Name="PASSWORD" Target="PASSWORD" Default="admin" Mode="" Description="Windows account password (not your broker login) -- change this" Type="Variable" Display="advanced" Required="false" Mask="true">admin</Config>
+  <Config Name="Storage" Target="/storage" Default="/mnt/user/appdata/mt5-windows/storage" Mode="rw" Description="Persistent Windows VM disk image (keep this on cache/SSD if you can)" Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata/mt5-windows/storage</Config>
 </Container>

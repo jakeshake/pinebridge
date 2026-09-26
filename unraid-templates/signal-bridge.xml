@@ -19,9 +19,9 @@
   <DateInstalled/>
   <DonateText/>
   <DonateLink/>
-  <Requires>Install and start mt5-windows first, then set ZMQ_HOST below to its container name or IP.</Requires>
+  <Requires>Install mt5-windows too. Set ZMQ_HOST below to your Unraid server's LAN IP (mt5-windows publishes the EA's ZeroMQ port there).</Requires>
   <Config Name="WebUI Port" Target="5000" Default="5000" Mode="tcp" Description="Flask webhook port" Type="Port" Display="always" Required="true" Mask="false">5000</Config>
-  <Config Name="ZMQ_HOST" Target="ZMQ_HOST" Default="mt5-windows" Mode="" Description="Host/IP of the mt5-windows container running the EA" Type="Variable" Display="always" Required="true" Mask="false">mt5-windows</Config>
+  <Config Name="ZMQ_HOST" Target="ZMQ_HOST" Default="" Mode="" Description="Your Unraid server's LAN IP (e.g. 192.168.1.10). Container names don't resolve on Unraid's default bridge network." Type="Variable" Display="always" Required="true" Mask="false"></Config>
   <Config Name="ZMQ_PORT" Target="ZMQ_PORT" Default="5555" Mode="" Description="ZeroMQ PULL port the EA listens on" Type="Variable" Display="always" Required="true" Mask="false">5555</Config>
   <Config Name="WEBHOOK_SECRET" Target="WEBHOOK_SECRET" Default="" Mode="" Description="Long random string. Must match the secret= field in your TradingView alerts. Generate with: openssl rand -hex 32" Type="Variable" Display="always" Required="true" Mask="true"></Config>
   <Config Name="REQUIRE_WEBHOOK_SECRET" Target="REQUIRE_WEBHOOK_SECRET" Default="true" Mode="" Description="Leave true for anything reachable from the internet. Only set false for local-only testing." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>

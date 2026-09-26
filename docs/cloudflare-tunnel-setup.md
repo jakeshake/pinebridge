@@ -14,7 +14,9 @@ domain added to it.
    - Subdomain: anything you like, e.g. `tv-webhook`
    - Domain: a domain already on your Cloudflare account
    - Service type: `HTTP`
-   - Service URL: `signal-bridge:5000`
+   - Service URL: `signal-bridge:5000` with docker-compose, or
+     `<your-unraid-ip>:5000` on Unraid (container names don't resolve on
+     Unraid's default bridge network)
 5. Save. Your public webhook URL is now
    `https://tv-webhook.yourdomain.com/webhook`.
 6. In TradingView, use that full URL (with `/webhook`) as the alert

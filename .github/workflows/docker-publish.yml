@@ -1,15 +1,13 @@
-name: Build and publish signal-bridge image
+name: Build and publish images
 
 on:
   push:
     branches: [main]
     paths:
       - "signal-bridge/**"
+      - "mt5-windows/**"
       - ".github/workflows/docker-publish.yml"
   workflow_dispatch:
-
-env:
-  IMAGE_NAME: ${{ github.repository_owner }}/tv-mt5-bridge-signal-bridge
 
 jobs:
   build-and-push:
@@ -17,6 +15,13 @@ jobs:
     permissions:
       contents: read
       packages: write
+    strategy:
+      matrix:
+        include:
+          - context: signal-bridge
+            image: tv-mt5-bridge-signal-bridge
+          - context: mt5-windows
+            image: tv-mt5-bridge-windows
     steps:
       - uses: actions/checkout@v4
 
@@ -30,8 +35,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: ./signal-bridge
+          context: ./${{ matrix.context }}
           push: true
           tags: |
-            ghcr.io/${{ env.IMAGE_NAME }}:latest
-            ghcr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:latest
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ github.sha }}
