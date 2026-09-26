@@ -27,10 +27,14 @@ dropdown, fill it in, and hit Apply:
    virtualization enabled in BIOS.
 2. **tv-mt5-signal-bridge** -- `ZMQ_HOST` = your Unraid server's LAN IP,
    `WEBHOOK_SECRET` = a long random string (`openssl rand -hex 32` in the
-   Unraid terminal makes one).
+   Unraid terminal makes one). If host port 5000 is already taken (Frigate
+   and others use it), change **WebUI Port** to a free one like 5002 and
+   use that port everywhere below. Note Unraid's Apply log prints the
+   docker command with the secret visible -- clear that screen when done.
 3. **tv-mt5-cloudflared** -- `TUNNEL_TOKEN` from
    [cloudflare-tunnel-setup.md](cloudflare-tunnel-setup.md). Point the
-   tunnel's public hostname at `http://<unraid-ip>:5000`.
+   tunnel's public hostname at `http://<unraid-ip>:5000` (or your chosen
+   port).
 
 ## 3. Wait for first boot
 
