@@ -104,6 +104,17 @@ only asks once per install):
   inbound firewall rule for port 5555 ahead of time so Windows never needs
   to ask. Not yet re-verified live.
 
+- **A truly fresh VM has no MQL5 standard library until MT5's first run.**
+  The first from-scratch install from the Unraid template compiled and
+  attached the EA before that existed, so the attach failed ("not found
+  from start config") and the EA had to be attached by hand. Earlier test
+  runs had reused a VM where MT5 had already run once, which hid this. Now
+  a warm-up run comes first, and `launch-mt5.ps1` (run at every logon)
+  checks the EA is really listening on port 5555 and re-attaches it if not.
+  The old Startup shortcut also re-ran the attach config on every boot,
+  stacking another chart and EA copy per reboot. Not yet re-verified on a
+  fresh install.
+
 After first boot:
 
 1. Open the noVNC viewer at `http://<host>:8006` to watch the Windows

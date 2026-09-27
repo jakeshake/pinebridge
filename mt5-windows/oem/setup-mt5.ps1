@@ -62,7 +62,19 @@
 #      can click that unattended for real users, and if it's never
 #      answered the port may stay blocked for connections from outside
 #      the VM. Added an inbound firewall rule for port 5555 ahead of time
-#      so Windows never needs to ask -- not yet re-verified live.
+#      so Windows never needs to ask -- CONFIRMED on the fresh-install run
+#      (port reachable from outside the VM with nobody clicking anything).
+#   8. The first fully fresh install from the Unraid template (2026-09-26)
+#      got MT5, the ZeroMQ library and the EA in place but did NOT attach
+#      the EA: a brand-new VM has no MQL5 standard library until MT5's first
+#      portable run deploys it, so the compile failed and the start-config
+#      attach raced that first run's full recompile. Earlier runs reused a
+#      VM where MT5 had already run, which hid this. Fixed with a warm-up
+#      run before compiling, plus launch-mt5.ps1, which checks the EA is
+#      actually listening and re-attaches if not. The old Startup shortcut
+#      also passed the attach config on every boot, stacking a new chart +
+#      EA copy per reboot (only one can bind the port) -- the launcher only
+#      uses it when needed. Not yet re-verified on a fresh install.
 # Watch provision.log and the Experts tab (not just the main Journal) on
 # first boot, and confirm Algo Trading / DLL imports end up enabled
 # (Tools > Options > Expert Advisors inside the terminal) before trusting
@@ -204,9 +216,35 @@ Copy-Item -Path "C:\OEM\TradingViewZeroMQExecutor.set" -Destination (Join-Path $
 # genuinely existed, just in the folder MetaEditor wasn't looking in.
 # /portable makes it use $InstallDir\MQL5 instead, matching step 2's target
 # and step 6's /portable launch.
+#
+# CONFIRMED LIVE (fresh-install run from the Unraid template, 2026-09-26):
+# on a brand-new VM the portable MQL5 folder has no standard library yet --
+# MT5 only deploys it ("updating ...\MQL5 folder -- 453 files updated") the
+# first time terminal64 runs in portable mode, then kicks off a full
+# recompile. Compiling before that fails on the EA's #include
+# <Trade/Trade.mqh>, and attaching the EA straight away races that first
+# recompile ("not found from start config"). Earlier test runs reused a VM
+# where MT5 had already run once, which hid both. So: one warm-up run first.
+Write-Host "Warm-up MT5 run (deploys the MQL5 standard library)..."
+$tradeMqh = Join-Path $IncludeDir "Trade\Trade.mqh"
+Start-Process -FilePath $terminalExe -ArgumentList "/portable" -WorkingDirectory $InstallDir
+$warmupEnd = (Get-Date).AddMinutes(5)
+while (-not (Test-Path $tradeMqh) -and (Get-Date) -lt $warmupEnd) { Start-Sleep -Seconds 5 }
+if (-not (Test-Path $tradeMqh)) { Write-Host "WARNING: $tradeMqh never appeared -- compile will probably fail." }
+Start-Sleep -Seconds 90   # let the warm-up run's full recompile finish
+Get-Process terminal64 -ErrorAction SilentlyContinue | ForEach-Object { $_.CloseMainWindow() | Out-Null }
+Start-Sleep -Seconds 15
+Get-Process terminal64 -ErrorAction SilentlyContinue | Stop-Process -Force
+
 Write-Host "Compiling EA..."
 $metaEditor = Join-Path $InstallDir "metaeditor64.exe"
 Start-Process -FilePath $metaEditor -ArgumentList "/compile:`"$ExpertsDir\TradingViewZeroMQExecutor.mq5`"", "/portable", "/log:`"C:\OEM\compile.log`"" -Wait
+if (Test-Path (Join-Path $ExpertsDir "TradingViewZeroMQExecutor.ex5")) {
+    Write-Host "EA compiled."
+} else {
+    Write-Host "WARNING: no TradingViewZeroMQExecutor.ex5 after compiling -- compile.log follows:"
+    Get-Content "C:\OEM\compile.log" -ErrorAction SilentlyContinue | Write-Host
+}
 
 # CONFIRMED LIVE (sixth run, 2026-09-14): the EA binding its ZeroMQ PULL
 # socket triggers an interactive "Windows Security -- allow this app on
@@ -261,20 +299,27 @@ Period=M1
 "@ | Out-File -FilePath $configPath -Encoding ascii
 
 # ---------------------------------------------------------------------------
-# 6. Launch on every login, in portable mode (keeps MQL5 data under
-#    $InstallDir\MQL5, next to the binaries, instead of a randomly-hashed
-#    AppData folder).
+# 6. Launch on every login via launch-mt5.ps1, in portable mode (MQL5 data
+#    under $InstallDir\MQL5 instead of a randomly-hashed AppData folder).
+#    The launcher only uses startup.ini when the EA isn't already listening,
+#    so reboots don't stack duplicate charts/EAs -- see its header.
 # ---------------------------------------------------------------------------
+$launcher = Join-Path $InstallDir "launch-mt5.ps1"
+Copy-Item -Path "C:\OEM\launch-mt5.ps1" -Destination $launcher -Force
+
 $startupFolder = [Environment]::GetFolderPath("Startup")
 $shortcutPath = Join-Path $startupFolder "MT5.lnk"
 $wshell = New-Object -ComObject WScript.Shell
 $shortcut = $wshell.CreateShortcut($shortcutPath)
-$shortcut.TargetPath = Join-Path $InstallDir "terminal64.exe"
-$shortcut.Arguments = "/portable /config:`"$configPath`""
+$shortcut.TargetPath = "powershell.exe"
+$shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcher`""
 $shortcut.WorkingDirectory = $InstallDir
 $shortcut.Save()
 
-Write-Host "Launching MT5 for the first time..."
-Start-Process -FilePath (Join-Path $InstallDir "terminal64.exe") -ArgumentList "/portable", "/config:`"$configPath`""
-
-Write-Host "Provisioning complete."
+Write-Host "Launching MT5 and attaching the EA..."
+& $launcher -Attach
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "Provisioning complete -- EA is listening on port 5555."
+} else {
+    Write-Host "Provisioning finished, but the EA never started listening on port 5555. See docs/mt5-ea-setup.md."
+}
