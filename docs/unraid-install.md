@@ -9,8 +9,13 @@ downloading -- the images carry all the provisioning files.
 Open a terminal on Unraid (the `>_` icon, top right) and run:
 
 ```bash
-cd /boot/config/plugins/dockerMan/templates-user && for t in mt5-windows signal-bridge cloudflared; do wget -qO "my-tv-mt5-$t.xml" "https://raw.githubusercontent.com/jakeshake/tv-mt5-bridge/main/unraid-templates/$t.xml"; done
+cd /boot/config/plugins/dockerMan/templates-user && for t in mt5-windows signal-bridge cloudflared; do wget -qO "my-tv-mt5-bridge_$t.xml" "https://raw.githubusercontent.com/jakeshake/tv-mt5-bridge/main/unraid-templates/$t.xml"; done
 ```
+
+Safe to re-run to pick up template updates. (Unraid saves each container's
+filled-in settings separately as `my-<container name>.xml`, so these file
+names deliberately don't match any container name -- otherwise re-running
+this would wipe your saved settings.)
 
 (Community Applications' "template repositories" setting isn't present in
 current CA releases, so this is the supported way to add third-party
@@ -18,8 +23,8 @@ templates until these are listed in CA itself.)
 
 ## 2. Install the three containers
 
-Go to **Docker > Add Container**, pick each template from the **Template**
-dropdown, fill it in, and hit Apply:
+Go to **Docker > Add Container**, pick each `tv-mt5-bridge_...` template from
+the **Template** dropdown, fill it in, and hit Apply:
 
 1. **mt5-windows** -- your broker's `MT5_LOGIN` / `MT5_PASSWORD` /
    `MT5_SERVER`, and check `RAM_SIZE` / `CPU_CORES` fit your hardware.
