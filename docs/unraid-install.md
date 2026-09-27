@@ -43,8 +43,10 @@ the **Template** dropdown, fill it in, and hit Apply:
 
 ## 3. Wait for first boot
 
-mt5-windows installs Windows and then MT5 by itself -- roughly 20-40
-minutes the first time. Watch it from its WebUI (port 8006). It's done when
+mt5-windows downloads and installs Windows, then MT5, by itself -- anywhere
+from about 15 minutes to over an hour the first time, mostly depending on
+how fast the Windows download is. Don't click around inside the VM while
+it's working; the setup script drives some installer windows itself. Watch it from its WebUI (port 8006). It's done when
 MT5 is open with the EA attached to a chart and the **Experts** tab at the
 bottom shows `Waiting for signals from Flask...`. See
 [mt5-ea-setup.md](mt5-ea-setup.md) if it doesn't get there.

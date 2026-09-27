@@ -52,9 +52,8 @@ to a chart, and its own `[ZMQ]` log confirmed
 `OK: ZeroMQ PULL socket bound to: tcp://*:5555` / `Waiting for signals
 from Flask...` with zero errors in either the Journal or Experts tabs.
 Seven concrete bugs were found and fixed along the way by actually
-running this (the seventh, a Windows Firewall prompt, was added right
-after that clean run and hasn't itself had a live re-run, since Windows
-only asks once per install):
+running this, plus an eighth on the first from-scratch Unraid install
+(all since confirmed on a wiped reinstall):
 
 - **`mt5setup.exe /auto` is not fully silent.** It still shows a
   license-agreement screen and a finish screen that each need a click. The
@@ -102,7 +101,8 @@ only asks once per install):
   for real users, and if it's never answered the port may stay blocked
   for connections from outside the VM (i.e. from signal-bridge). Added an
   inbound firewall rule for port 5555 ahead of time so Windows never needs
-  to ask. Not yet re-verified live.
+  to ask. **Confirmed** on the fresh Unraid install: signal-bridge reached
+  port 5555 with no prompt ever clicked.
 
 - **A truly fresh VM has no MQL5 standard library until MT5's first run.**
   The first from-scratch install from the Unraid template compiled and
@@ -112,8 +112,9 @@ only asks once per install):
   a warm-up run comes first, and `launch-mt5.ps1` (run at every logon)
   checks the EA is really listening on port 5555 and re-attaches it if not.
   The old Startup shortcut also re-ran the attach config on every boot,
-  stacking another chart and EA copy per reboot. Not yet re-verified on a
-  fresh install.
+  stacking another chart and EA copy per reboot. **Confirmed fixed**
+  (2026-09-26): a wiped `/storage` reinstall from the Unraid template came
+  up with the EA bound to port 5555 and no manual steps at all.
 
 After first boot:
 

@@ -74,7 +74,7 @@
 #      actually listening and re-attaches if not. The old Startup shortcut
 #      also passed the attach config on every boot, stacking a new chart +
 #      EA copy per reboot (only one can bind the port) -- the launcher only
-#      uses it when needed. Not yet re-verified on a fresh install.
+#      uses it when needed. Confirmed on a fresh install (2026-09-26).
 # Watch provision.log and the Experts tab (not just the main Journal) on
 # first boot, and confirm Algo Trading / DLL imports end up enabled
 # (Tools > Options > Expert Advisors inside the terminal) before trusting
