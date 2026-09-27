@@ -7,6 +7,9 @@
 //|       CANCEL_LONG/CANCEL_SHORT) and bracket MODIFY (Fast-Move    |
 //|       TP Extension) - see the big comment block below OnInit()  |
 //|       for what's new and why.                                    |
+//| v3.3: BUY/SELL (non double-down) skips when a resting-limit      |
+//|       position is already open in that direction, and clears     |
+//|       same-direction resting limits before a market entry.       |
 //|                                                                  |
 //| Receives signals INSTANTLY via ZeroMQ PULL socket from Flask.   |
 //| Latency: ~1-5ms from Flask to MT5                                |
@@ -17,9 +20,9 @@
 //|   3. Copy libzmq.dll & libsodium.dll to MQL5/Libraries/          |
 //|   4. Enable "Allow DLL imports" in MT5 Options                   |
 //+------------------------------------------------------------------+
-#property copyright "TradingView ZeroMQ Executor v3.2"
+#property copyright "TradingView ZeroMQ Executor v3.3"
 #property link      "https://github.com/ding9736/MQL5-ZeroMQ"
-#property version   "3.20"
+#property version   "3.30"
 #property strict
 
 // ZeroMQ library (ding9736 version)
@@ -435,19 +438,25 @@ bool ProcessSignal(string json)
    // Execute based on action
    bool result = false;
 
-   if(action == "BUY")
+   if(action == "BUY" || action == "SELL")
    {
-      Log("Size: " + DoubleToString(size, 2));
+      bool isLong = (action == "BUY");
+      bool isDd = (ParseJsonDouble(json, "dd") > 0);
+      Log("Size: " + DoubleToString(size, 2) + (isDd ? " (double-down add)" : ""));
       Log("SL Pips: " + DoubleToString(slPips, 1));
       Log("TP Pips: " + DoubleToString(tpPips, 1));
-      result = ExecuteTrade("BUY", symbol, size, slPips, tpPips, comment);
-   }
-   else if(action == "SELL")
-   {
-      Log("Size: " + DoubleToString(size, 2));
-      Log("SL Pips: " + DoubleToString(slPips, 1));
-      Log("TP Pips: " + DoubleToString(tpPips, 1));
-      result = ExecuteTrade("SELL", symbol, size, slPips, tpPips, comment);
+      if(!isDd && LimitFilledPositionOpen(symbol, isLong))
+      {
+         // Pine's bar-close entry for a zone whose resting limit already
+         // filled broker-side - executing it would double the position.
+         Log("SKIP: " + action + " - a resting-limit " + (isLong ? "long" : "short") + " position is already open for "
+             + symbol + " (Pine's bar-close entry for the same move)");
+         return false;
+      }
+      if(!isDd)
+         DeletePendingLimitOrders(symbol, isLong ? ORDER_TYPE_BUY_LIMIT : ORDER_TYPE_SELL_LIMIT, -1,
+                                  "superseded by market " + action);
+      result = ExecuteTrade(action, symbol, size, slPips, tpPips, comment);
    }
    else if(action == "CLOSELONG")
    {
@@ -902,6 +911,28 @@ bool ModifyOpenPosition(string symbol, bool hasSl, double newSl, bool hasTp, dou
    }
 
    Log("SKIP: No open position found for " + symbol + " to modify");
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| [v3.3] True if a position for symbol/magic/direction is open that |
+//| was opened by a resting limit order (its comment carries the      |
+//| "|zone_id" stamp from BuildOrderComment). Pine never sees those   |
+//| fills, so it still sends its own bar-close BUY/SELL for the same  |
+//| move; ProcessSignal uses this to skip that duplicate entry.        |
+//+------------------------------------------------------------------+
+bool LimitFilledPositionOpen(string symbol, bool isLong)
+{
+   ENUM_POSITION_TYPE wantType = isLong ? POSITION_TYPE_BUY : POSITION_TYPE_SELL;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(PositionGetInteger(POSITION_MAGIC) != MagicNumber) continue;
+      if(PositionGetString(POSITION_SYMBOL) != symbol) continue;
+      if((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) != wantType) continue;
+      if(ExtractZoneIdFromComment(PositionGetString(POSITION_COMMENT)) >= 0) return true;
+   }
    return false;
 }
 

@@ -46,9 +46,11 @@ the **Apps** tab.
 
 ## Security
 
-- The webhook requires a shared secret (`WEBHOOK_SECRET`) sent as a
-  `secret=` field in the alert body — TradingView can't send custom
-  headers, so this is the auth mechanism. **Don't disable this** for
+- The webhook requires a shared secret (`WEBHOOK_SECRET`), sent either in
+  the webhook URL (`/webhook?secret=...`) or as a `secret=` field in the
+  alert body — TradingView can't send custom headers, so this is the auth
+  mechanism. Use the URL form for strategies that send messages from Pine
+  `alert()` calls. **Don't disable this** for
   anything reachable from the internet.
 - Public exposure goes through a Cloudflare Tunnel, not a forwarded port.
 - No broker or Windows credentials are ever baked into the images — they're
