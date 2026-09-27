@@ -76,7 +76,7 @@ uint        g_lastLogTime = 0;
 int OnInit()
 {
    Log("====================================================");
-   Log("TradingView ZeroMQ Executor v3.2 Starting...");
+   Log("TradingView ZeroMQ Executor v3.3 Starting...");
    Log("  Using: ding9736/MQL5-ZeroMQ library");
    Log("====================================================");
 

@@ -128,6 +128,18 @@ After first boot:
    Journal) -- that's where the EA's own ZeroMQ startup log and any DLL
    load errors actually show up.
 
+### Orders fail with `10027 - auto trading disabled by client`
+
+Logging in to a different broker account (File > Login to Trade Account)
+can reset the chart workspace. The EA re-attaches, but its own
+**Common > Allow Algo Trading** box can end up unticked, and **Allow DLL
+imports** can reset too, while the toolbar's Algo Trading button still
+shows as on. The EA then starts, but every order is rejected with
+`10027`. Fix: double-click the EA's name in the chart's top-right corner
+(or right-click the chart > Expert list > Properties), tick both boxes on
+the **Common** tab and click OK. Also re-check **Tools > Options > Expert
+Advisors**.
+
 ### If you're troubleshooting manually via noVNC
 
 The noVNC session's keyboard forwarding drops the Shift modifier for
