@@ -79,10 +79,14 @@ def _without_secret(parsed_data):
 
 
 def _secret_ok(parsed_data):
+    """Accepts the secret either in the alert body (`secret=...`) or in the
+    webhook URL (`/webhook?secret=...`). The URL form is the only one that
+    works for Pine `alert()` calls: TradingView sends their message exactly
+    as the script built it, so nothing can be appended in the alert dialog."""
     if not config.REQUIRE_SECRET:
         return True
-    supplied = str(parsed_data.get("secret", ""))
-    return hmac.compare_digest(supplied, config.WEBHOOK_SECRET)
+    supplied = str(parsed_data.get("secret", "")) or request.args.get("secret", "")
+    return hmac.compare_digest(supplied.encode(), config.WEBHOOK_SECRET.encode())
 
 
 @app.route("/health", methods=["GET"])
@@ -168,6 +172,7 @@ def test_endpoint():
                         "exit",
                     ],
                     "modify": ["modify"],
+                    "limit_orders": ["armlong", "armshort", "cancellong", "cancelshort"],
                 },
                 "example": (
                     "signal=long,symbol=EURUSD,qty=100000,entry_price=1.0850,"

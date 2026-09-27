@@ -19,8 +19,9 @@ domain added to it.
      Unraid's default bridge network)
 5. Save. Your public webhook URL is now
    `https://tv-webhook.yourdomain.com/webhook`.
-6. In TradingView, use that full URL (with `/webhook`) as the alert
-   webhook URL.
+6. In TradingView, use that full URL (with `/webhook`) plus your secret as
+   the alert webhook URL:
+   `https://tv-webhook.yourdomain.com/webhook?secret=YOUR_SECRET`.
 
 You do not need to open any ports on your router -- `cloudflared` makes an
 outbound-only connection to Cloudflare's edge.

@@ -1,8 +1,12 @@
 name: Build and publish images
 
 on:
+  # Every branch runs the tests and publishes images. Only main updates
+  # :latest (what Unraid installs); any other branch is tagged with its own
+  # name, so a PR can be tested on Unraid by pointing the container's
+  # Repository at ghcr.io/<owner>/<image>:<branch-name>.
   push:
-    branches: [main]
+    branches: ["**"]
     paths:
       - "signal-bridge/**"
       - "mt5-windows/**"
@@ -10,7 +14,18 @@ on:
   workflow_dispatch:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r signal-bridge/requirements.txt pytest
+      - run: python -m pytest -q signal-bridge/tests
+
   build-and-push:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -32,11 +47,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Choose tags
+        id: tags
+        run: |
+          image="ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}"
+          if [ "$GITHUB_REF_NAME" = "main" ]; then
+            ref_tag=latest
+          else
+            ref_tag=$(echo "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9_.-' '-' | sed 's/-*$//')
+          fi
+          printf 'tags<<EOF\n%s:%s\n%s:%s\nEOF\n' "$image" "$ref_tag" "$image" "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: ./${{ matrix.context }}
           push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:latest
-            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ github.sha }}
+          tags: ${{ steps.tags.outputs.tags }}
