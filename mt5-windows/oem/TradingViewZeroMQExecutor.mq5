@@ -14,6 +14,8 @@
 //|       (e.g. after a broker disconnect); broker connection loss / |
 //|       recovery is logged and pushed as a notification; retcode   |
 //|       10046 (hedge prohibited) gets a readable explanation.      |
+//|       Closes run oldest-first (FIFO accounts reject anything else |
+//|       with 10045); MODIFY updates every position on the symbol.  |
 //|                                                                  |
 //| Receives signals INSTANTLY via ZeroMQ PULL socket from Flask.   |
 //| Latency: ~1-5ms from Flask to MT5                                |
@@ -359,15 +361,25 @@ void RetryFailedCloses()
    g_lastRetryTick = GetTickCount();
    if(!TerminalInfoInteger(TERMINAL_CONNECTED)) return;
 
+   // Drop tickets that are already gone (closed by SL/TP or manually).
    for(int i = ArraySize(g_retryTickets) - 1; i >= 0; i--)
    {
+      if(PositionSelectByTicket(g_retryTickets[i])) continue;
+      Log("Retry: ticket " + IntegerToString((long)g_retryTickets[i]) + " is no longer open (closed by SL/TP or manually) - dropping it");
+      RemoveCloseRetry(i);
+   }
+
+   // Retry the rest oldest-first, same FIFO rule as ClosePositions().
+   ulong openTickets[];
+   int n = CollectPositionsFifo("", -1, openTickets);
+   for(int k = 0; k < n; k++)
+   {
+      int i = -1;
+      for(int j = 0; j < ArraySize(g_retryTickets); j++)
+         if(g_retryTickets[j] == openTickets[k]) { i = j; break; }
+      if(i < 0) continue;
+
       ulong ticket = g_retryTickets[i];
-      if(!PositionSelectByTicket(ticket))
-      {
-         Log("Retry: ticket " + IntegerToString((long)ticket) + " is no longer open (closed by SL/TP or manually) - dropping it");
-         RemoveCloseRetry(i);
-         continue;
-      }
       if(trade.PositionClose(ticket))
       {
          Print("[ZMQ] OK: Closed ticket " + IntegerToString((long)ticket) + " on retry");
@@ -394,7 +406,9 @@ string RetcodeText()
 {
    uint code = trade.ResultRetcode();
    string desc = trade.ResultRetcodeDescription();
-   if(code == 10046)
+   if(code == 10045)
+      desc = "FIFO close rule: an older position on this symbol must be closed first (US/NFA FIFO rules)";
+   else if(code == 10046)
       desc = "hedge prohibited: an opposite position is open on this symbol and the account does not allow hedging (e.g. US/NFA FIFO rules)";
    return IntegerToString(code) + " - " + desc;
 }
@@ -769,6 +783,49 @@ bool ExecuteTrade(string action, string symbol, double lots, double slPips, doub
 }
 
 //+------------------------------------------------------------------+
+//| [v3.4] Tickets of this EA's positions matching symbol ("" = any)  |
+//| and type (-1 = any), oldest first (by open time, then ticket).    |
+//+------------------------------------------------------------------+
+int CollectPositionsFifo(string symbol, int positionType, ulong &tickets[])
+{
+   long times[];
+   int n = 0;
+   ArrayResize(tickets, 0);
+
+   for(int i = 0; i < PositionsTotal(); i++)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(PositionGetInteger(POSITION_MAGIC) != MagicNumber) continue;
+      if(symbol != "" && PositionGetString(POSITION_SYMBOL) != symbol) continue;
+      if(positionType >= 0 && PositionGetInteger(POSITION_TYPE) != positionType) continue;
+
+      ArrayResize(tickets, n + 1);
+      ArrayResize(times, n + 1);
+      tickets[n] = ticket;
+      times[n] = PositionGetInteger(POSITION_TIME_MSC);
+      n++;
+   }
+
+   // Insertion sort - there are only ever a handful of positions.
+   for(int a = 1; a < n; a++)
+   {
+      ulong t = tickets[a];
+      long tm = times[a];
+      int b = a - 1;
+      while(b >= 0 && (times[b] > tm || (times[b] == tm && tickets[b] > t)))
+      {
+         tickets[b + 1] = tickets[b];
+         times[b + 1] = times[b];
+         b--;
+      }
+      tickets[b + 1] = t;
+      times[b + 1] = tm;
+   }
+   return n;
+}
+
+//+------------------------------------------------------------------+
 //| Close positions for a symbol                                      |
 //+------------------------------------------------------------------+
 bool ClosePositions(string symbol, int positionType)
@@ -781,22 +838,14 @@ bool ClosePositions(string symbol, int positionType)
    int closedCount = 0;
    int failedCount = 0;
 
-   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   // Oldest first: NFA/FIFO accounts reject closing a newer position on a
+   // symbol while an older one is open (10045), e.g. the double-down leg.
+   ulong tickets[];
+   int n = CollectPositionsFifo(symbol, positionType, tickets);
+
+   for(int i = 0; i < n; i++)
    {
-      ulong ticket = PositionGetTicket(i);
-      if(ticket == 0) continue;
-
-      if(PositionGetInteger(POSITION_MAGIC) != MagicNumber) continue;
-
-      string posSymbol = PositionGetString(POSITION_SYMBOL);
-      if(symbol != "" && posSymbol != symbol) continue;
-
-      if(positionType >= 0)
-      {
-         ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-         if(posType != positionType) continue;
-      }
-
+      ulong ticket = tickets[i];
       if(trade.PositionClose(ticket))
       {
          Log("OK: Closed ticket " + IntegerToString((int)ticket));
@@ -1016,12 +1065,16 @@ bool ModifyOpenPosition(string symbol, bool hasSl, double newSl, bool hasTp, dou
 
    int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
 
-   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   // Pine's bracket covers its whole position, so after a double-down every
+   // leg gets the new SL/TP (previously only the newest leg was modified).
+   ulong tickets[];
+   int n = CollectPositionsFifo(symbol, -1, tickets);
+   int modified = 0, failed = 0;
+
+   for(int i = 0; i < n; i++)
    {
-      ulong ticket = PositionGetTicket(i);
-      if(ticket == 0) continue;
-      if(PositionGetInteger(POSITION_MAGIC) != MagicNumber) continue;
-      if(PositionGetString(POSITION_SYMBOL) != symbol) continue;
+      ulong ticket = tickets[i];
+      if(!PositionSelectByTicket(ticket)) continue;
 
       double curSl = PositionGetDouble(POSITION_SL);
       double curTp = PositionGetDouble(POSITION_TP);
@@ -1036,15 +1089,21 @@ bool ModifyOpenPosition(string symbol, bool hasSl, double newSl, bool hasTp, dou
       {
          Log("OK: BRACKET MODIFIED! Ticket: " + IntegerToString((int)ticket));
          g_bracketsModified++;
-         return true;
+         modified++;
       }
-
-      Log("FAIL: MODIFY FAILED: " + RetcodeText());
-      return false;
+      else
+      {
+         Log("FAIL: MODIFY FAILED for ticket " + IntegerToString((int)ticket) + ": " + RetcodeText());
+         failed++;
+      }
    }
 
-   Log("SKIP: No open position found for " + symbol + " to modify");
-   return false;
+   if(n == 0)
+   {
+      Log("SKIP: No open position found for " + symbol + " to modify");
+      return false;
+   }
+   return (failed == 0 && modified > 0);
 }
 
 //+------------------------------------------------------------------+

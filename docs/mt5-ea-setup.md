@@ -154,9 +154,15 @@ disappears (hit its broker SL/TP), or `CloseRetryMaxMin` passes. Only the
 exact tickets that failed are retried. Entries, arms and modifies are not
 retried: they would be stale by the time the connection returns.
 
-`10046 - hedge prohibited` means the account refuses a position opposite an
-open one (US/NFA FIFO rules), even if MT5 reports a hedging account. It
-usually means an earlier close failed and the old position is still open.
+US accounts (e.g. Forex.com US) follow NFA FIFO rules, even when MT5
+reports a hedging account:
+
+- `10045 - FIFO close rule`: positions on a symbol must be closed oldest
+  first. The EA closes (and retries) oldest-first, so this should only
+  appear if something else holds an older position on the same symbol.
+- `10046 - hedge prohibited`: the account refuses a position opposite an
+  open one. It usually means an earlier close failed and the old position
+  is still open.
 
 ### If you're troubleshooting manually via noVNC
 
