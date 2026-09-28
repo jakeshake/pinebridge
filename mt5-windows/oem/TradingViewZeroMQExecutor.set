@@ -17,3 +17,6 @@ SpreadRetryAttempts=5
 SpreadRetryDelayMs=2000
 EnableLimitOrders=true
 LimitOrderExpiryMin=0
+CloseRetrySec=10
+CloseRetryMaxMin=1440
+NotifyConnection=true

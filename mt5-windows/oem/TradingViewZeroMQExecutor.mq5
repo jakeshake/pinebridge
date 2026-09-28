@@ -10,6 +10,10 @@
 //| v3.3: BUY/SELL (non double-down) skips when a resting-limit      |
 //|       position is already open in that direction, and clears     |
 //|       same-direction resting limits before a market entry.       |
+//| v3.4: Failed closes are queued and retried until they succeed    |
+//|       (e.g. after a broker disconnect); broker connection loss / |
+//|       recovery is logged and pushed as a notification; retcode   |
+//|       10046 (hedge prohibited) gets a readable explanation.      |
 //|                                                                  |
 //| Receives signals INSTANTLY via ZeroMQ PULL socket from Flask.   |
 //| Latency: ~1-5ms from Flask to MT5                                |
@@ -20,9 +24,9 @@
 //|   3. Copy libzmq.dll & libsodium.dll to MQL5/Libraries/          |
 //|   4. Enable "Allow DLL imports" in MT5 Options                   |
 //+------------------------------------------------------------------+
-#property copyright "TradingView ZeroMQ Executor v3.3"
+#property copyright "TradingView ZeroMQ Executor v3.4"
 #property link      "https://github.com/ding9736/MQL5-ZeroMQ"
-#property version   "3.30"
+#property version   "3.40"
 #property strict
 
 // ZeroMQ library (ding9736 version)
@@ -53,6 +57,11 @@ input int      SpreadRetryDelayMs  = 2000;        // Delay between retries (ms)
 input bool     EnableLimitOrders   = true;        // Honor ARM_LONG/ARM_SHORT/CANCEL_* signals
 input int      LimitOrderExpiryMin = 0;           // Pending order expiry in minutes (0 = GTC, no expiry)
 
+//--- Reliability (v3.4) ---
+input int      CloseRetrySec       = 10;          // Retry a failed close every N seconds while connected
+input int      CloseRetryMaxMin    = 1440;        // Give up retrying a failed close after N minutes (0 = never)
+input bool     NotifyConnection    = true;        // Push notification on broker disconnect/reconnect (needs MetaQuotes ID set in Options > Notifications)
+
 //+------------------------------------------------------------------+
 //| Global Variables                                                  |
 //+------------------------------------------------------------------+
@@ -70,13 +79,22 @@ int         g_limitOrdersCancelled = 0;
 int         g_bracketsModified = 0;
 uint        g_lastLogTime = 0;
 
+// [v3.4] Tickets whose close failed; retried from OnTimer until they close
+// or disappear (e.g. hit their broker-side SL/TP in the meantime).
+ulong       g_retryTickets[];
+datetime    g_retryQueuedAt[];
+uint        g_lastRetryTick = 0;
+int         g_closesRetried = 0;
+bool        g_wasConnected = true;
+datetime    g_disconnectedAt = 0;
+
 //+------------------------------------------------------------------+
 //| Expert initialization function                                    |
 //+------------------------------------------------------------------+
 int OnInit()
 {
    Log("====================================================");
-   Log("TradingView ZeroMQ Executor v3.3 Starting...");
+   Log("TradingView ZeroMQ Executor v3.4 Starting...");
    Log("  Using: ding9736/MQL5-ZeroMQ library");
    Log("====================================================");
 
@@ -118,6 +136,9 @@ int OnInit()
    else
       Log("  Spread Filter: OFF");
 
+   Log("  Close retry: every " + IntegerToString(CloseRetrySec) + "s"
+       + (CloseRetryMaxMin > 0 ? (", give up after " + IntegerToString(CloseRetryMaxMin) + "min") : ", no time limit")
+       + " | Connection notifications: " + (NotifyConnection ? "ON" : "OFF"));
    Log("  Resting Limit Orders: " + (EnableLimitOrders ? "ON" : "OFF")
        + (EnableLimitOrders ? (LimitOrderExpiryMin > 0 ? (" (expiry " + IntegerToString(LimitOrderExpiryMin) + "min)") : " (GTC)") : ""));
 
@@ -235,6 +256,9 @@ void OnDeinit(const int reason)
    Log("  Limit orders armed: " + IntegerToString(g_limitOrdersArmed));
    Log("  Limit orders cancelled: " + IntegerToString(g_limitOrdersCancelled));
    Log("  Brackets modified: " + IntegerToString(g_bracketsModified));
+   Log("  Closes recovered by retry: " + IntegerToString(g_closesRetried));
+   if(ArraySize(g_retryTickets) > 0)
+      Log("WARNING: " + IntegerToString(ArraySize(g_retryTickets)) + " failed close(s) still pending - check open positions manually");
 
    // Clean up ZeroMQ
    if(g_pullSocket != NULL)
@@ -265,6 +289,114 @@ void OnTimer()
 
    // Check for messages
    CheckForMessages();
+
+   MonitorConnection();
+   RetryFailedCloses();
+}
+
+//+------------------------------------------------------------------+
+//| [v3.4] Log + notify when the terminal loses / regains the broker. |
+//| While disconnected every trade request fails (10031), so this is  |
+//| the thing to know about in real time, not after the fact.         |
+//+------------------------------------------------------------------+
+void MonitorConnection()
+{
+   bool connected = (bool)TerminalInfoInteger(TERMINAL_CONNECTED);
+   if(connected == g_wasConnected) return;
+   g_wasConnected = connected;
+
+   string msg;
+   if(!connected)
+   {
+      g_disconnectedAt = TimeLocal();   // server time stops advancing while disconnected
+      msg = "TV-ZMQ: MT5 lost connection to the broker - trade signals will fail until it reconnects";
+   }
+   else
+   {
+      int mins = g_disconnectedAt > 0 ? (int)((TimeLocal() - g_disconnectedAt) / 60) : 0;
+      msg = "TV-ZMQ: MT5 reconnected to the broker after ~" + IntegerToString(mins) + " min"
+            + (ArraySize(g_retryTickets) > 0 ? ("; retrying " + IntegerToString(ArraySize(g_retryTickets)) + " failed close(s)") : "");
+   }
+   Print("[ZMQ] " + (connected ? "OK: " : "WARNING: ") + msg);   // always logged, regardless of EnableLogging
+   if(NotifyConnection)
+      SendNotification(StringSubstr(msg, 0, 255));
+}
+
+//+------------------------------------------------------------------+
+//| [v3.4] Queue a ticket whose close failed, so it's retried.        |
+//+------------------------------------------------------------------+
+void QueueCloseRetry(ulong ticket)
+{
+   int n = ArraySize(g_retryTickets);
+   for(int i = 0; i < n; i++)
+      if(g_retryTickets[i] == ticket) return;
+   ArrayResize(g_retryTickets, n + 1);
+   ArrayResize(g_retryQueuedAt, n + 1);
+   g_retryTickets[n] = ticket;
+   g_retryQueuedAt[n] = TimeLocal();
+   Print("[ZMQ] WARNING: close of ticket " + IntegerToString((long)ticket) + " failed - queued for retry every "
+         + IntegerToString(CloseRetrySec) + "s");
+}
+
+void RemoveCloseRetry(int index)
+{
+   int last = ArraySize(g_retryTickets) - 1;
+   g_retryTickets[index] = g_retryTickets[last];
+   g_retryQueuedAt[index] = g_retryQueuedAt[last];
+   ArrayResize(g_retryTickets, last);
+   ArrayResize(g_retryQueuedAt, last);
+}
+
+//+------------------------------------------------------------------+
+//| [v3.4] Retry queued closes. Pine already exited these positions,  |
+//| so closing them late is still correct; only the exact tickets     |
+//| that failed are retried, never a position opened afterwards.      |
+//+------------------------------------------------------------------+
+void RetryFailedCloses()
+{
+   if(ArraySize(g_retryTickets) == 0) return;
+   if(GetTickCount() - g_lastRetryTick < (uint)MathMax(CloseRetrySec, 1) * 1000) return;
+   g_lastRetryTick = GetTickCount();
+   if(!TerminalInfoInteger(TERMINAL_CONNECTED)) return;
+
+   for(int i = ArraySize(g_retryTickets) - 1; i >= 0; i--)
+   {
+      ulong ticket = g_retryTickets[i];
+      if(!PositionSelectByTicket(ticket))
+      {
+         Log("Retry: ticket " + IntegerToString((long)ticket) + " is no longer open (closed by SL/TP or manually) - dropping it");
+         RemoveCloseRetry(i);
+         continue;
+      }
+      if(trade.PositionClose(ticket))
+      {
+         Print("[ZMQ] OK: Closed ticket " + IntegerToString((long)ticket) + " on retry");
+         g_closesRetried++;
+         RemoveCloseRetry(i);
+         continue;
+      }
+      if(CloseRetryMaxMin > 0 && TimeLocal() - g_retryQueuedAt[i] > CloseRetryMaxMin * 60)
+      {
+         string msg = "TV-ZMQ: gave up closing ticket " + IntegerToString((long)ticket) + " after "
+                      + IntegerToString(CloseRetryMaxMin) + " min (" + RetcodeText() + ") - close it manually";
+         Print("[ZMQ] ERROR: " + msg);
+         if(NotifyConnection) SendNotification(StringSubstr(msg, 0, 255));   // 255-char push limit
+         RemoveCloseRetry(i);
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| [v3.4] "<code> - <description>" for the last trade result, with   |
+//| a readable explanation for codes CTrade doesn't describe.         |
+//+------------------------------------------------------------------+
+string RetcodeText()
+{
+   uint code = trade.ResultRetcode();
+   string desc = trade.ResultRetcodeDescription();
+   if(code == 10046)
+      desc = "hedge prohibited: an opposite position is open on this symbol and the account does not allow hedging (e.g. US/NFA FIFO rules)";
+   return IntegerToString(code) + " - " + desc;
 }
 
 //+------------------------------------------------------------------+
@@ -632,7 +764,7 @@ bool ExecuteTrade(string action, string symbol, double lots, double slPips, doub
       }
    }
 
-   Log("FAIL: TRADE FAILED: " + IntegerToString(trade.ResultRetcode()) + " - " + trade.ResultRetcodeDescription());
+   Log("FAIL: TRADE FAILED: " + RetcodeText());
    return false;
 }
 
@@ -672,8 +804,9 @@ bool ClosePositions(string symbol, int positionType)
       }
       else
       {
-         Log("FAIL: Failed to close ticket " + IntegerToString((int)ticket) + ": " + trade.ResultRetcodeDescription());
+         Log("FAIL: Failed to close ticket " + IntegerToString((int)ticket) + ": " + RetcodeText());
          failedCount++;
+         QueueCloseRetry(ticket);
       }
    }
 
@@ -781,7 +914,7 @@ bool ArmLimitOrder(string symbol, bool isLong, double limitPrice, double lots,
       return true;
    }
 
-   Log("FAIL: ARM FAILED: " + IntegerToString(trade.ResultRetcode()) + " - " + trade.ResultRetcodeDescription());
+   Log("FAIL: ARM FAILED: " + RetcodeText());
    return false;
 }
 
@@ -853,7 +986,7 @@ int DeletePendingLimitOrders(string symbol, ENUM_ORDER_TYPE orderType, long requ
       }
       else
       {
-         Log("FAIL: Failed to delete ticket " + IntegerToString((int)ticket) + ": " + trade.ResultRetcodeDescription());
+         Log("FAIL: Failed to delete ticket " + IntegerToString((int)ticket) + ": " + RetcodeText());
       }
    }
 
@@ -906,7 +1039,7 @@ bool ModifyOpenPosition(string symbol, bool hasSl, double newSl, bool hasTp, dou
          return true;
       }
 
-      Log("FAIL: MODIFY FAILED: " + IntegerToString(trade.ResultRetcode()) + " - " + trade.ResultRetcodeDescription());
+      Log("FAIL: MODIFY FAILED: " + RetcodeText());
       return false;
    }
 

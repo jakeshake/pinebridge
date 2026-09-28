@@ -140,6 +140,24 @@ shows as on. The EA then starts, but every order is rejected with
 the **Common** tab and click OK. Also re-check **Tools > Options > Expert
 Advisors**.
 
+### Broker disconnects
+
+While MT5 is disconnected from the broker, every trade request fails
+(`10031 - no connection`). The EA logs `WARNING: ... lost connection` and
+`OK: ... reconnected` in the Experts tab when this happens, and pushes the
+same message to your phone if you've set a MetaQuotes ID under
+**Tools > Options > Notifications** (input `NotifyConnection`).
+
+A close that fails for any reason is queued and retried every
+`CloseRetrySec` seconds while connected, until it succeeds, the position
+disappears (hit its broker SL/TP), or `CloseRetryMaxMin` passes. Only the
+exact tickets that failed are retried. Entries, arms and modifies are not
+retried: they would be stale by the time the connection returns.
+
+`10046 - hedge prohibited` means the account refuses a position opposite an
+open one (US/NFA FIFO rules), even if MT5 reports a hedging account. It
+usually means an earlier close failed and the old position is still open.
+
 ### If you're troubleshooting manually via noVNC
 
 The noVNC session's keyboard forwarding drops the Shift modifier for
