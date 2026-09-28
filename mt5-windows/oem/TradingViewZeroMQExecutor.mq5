@@ -315,8 +315,9 @@ void MonitorConnection()
    }
    else
    {
-      int mins = g_disconnectedAt > 0 ? (int)((TimeLocal() - g_disconnectedAt) / 60) : 0;
-      msg = "TV-ZMQ: MT5 reconnected to the broker after ~" + IntegerToString(mins) + " min"
+      int secs = g_disconnectedAt > 0 ? (int)(TimeLocal() - g_disconnectedAt) : 0;
+      string took = secs < 120 ? (IntegerToString(secs) + "s") : ("~" + IntegerToString(secs / 60) + " min");
+      msg = "TV-ZMQ: MT5 reconnected to the broker after " + took
             + (ArraySize(g_retryTickets) > 0 ? ("; retrying " + IntegerToString(ArraySize(g_retryTickets)) + " failed close(s)") : "");
    }
    Print("[ZMQ] " + (connected ? "OK: " : "WARNING: ") + msg);   // always logged, regardless of EnableLogging
