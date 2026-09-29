@@ -80,6 +80,12 @@ so the alert needs no hand-written message:
    come from Pine `alert()` calls, which TradingView sends exactly as the
    script built them, so nothing typed in the Message box reaches them.
 
+Only an alert on the strategy itself, with that Message, sends bridge
+signals. An alert on another script, or on a non-order condition (a price
+crossing, a drawing), sends its own text or the literal
+`{{strategy.order.alert_message}}`. The bridge rejects those with
+`Alert has no signal= field` in its log.
+
 The `symbol` field is TradingView's ticker (`syminfo.ticker`, e.g.
 `EURUSD`), so it must match the MT5 symbol name exactly. The bridge has no
 symbol mapping yet, so brokers that add a suffix (`EURUSD.a`, `EURUSDm`)

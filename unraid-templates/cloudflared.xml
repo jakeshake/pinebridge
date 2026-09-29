@@ -19,6 +19,6 @@
   <DateInstalled/>
   <DonateText/>
   <DonateLink/>
-  <Requires>Create a tunnel in the Cloudflare Zero Trust dashboard and point its public hostname at http://[your Unraid IP]:5000 before starting this container.</Requires>
+  <Requires>Create a tunnel in the Cloudflare Zero Trust dashboard and point its public hostname at http://[your Unraid IP]:5080 (the signal-bridge WebUI Port) before starting this container. Optional: skip this container if you already run a Cloudflare tunnel -- just add a public hostname to it.</Requires>
   <Config Name="TUNNEL_TOKEN" Target="TUNNEL_TOKEN" Default="" Mode="" Description="Token for the tunnel you created in the Cloudflare Zero Trust dashboard" Type="Variable" Display="always" Required="true" Mask="true"></Config>
 </Container>
