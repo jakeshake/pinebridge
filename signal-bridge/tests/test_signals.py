@@ -115,3 +115,11 @@ def test_bad_or_missing_secret_rejected(client, url):
     r = client.post(url, data=ARM)
     assert r.status_code == 401
     assert client.sent == []
+
+
+@pytest.mark.parametrize("body", ["{{strategy.order.alert_message}}", "EURUSD crossed 1.08", ""])
+def test_non_signal_alerts_get_a_clear_error(client, body):
+    r = client.post("/webhook?secret=test-secret", data=body)
+    assert r.status_code == 400
+    assert "no signal= field" in r.get_json()["message"]
+    assert client.sent == []

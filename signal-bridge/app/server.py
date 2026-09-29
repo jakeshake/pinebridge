@@ -49,6 +49,7 @@ def setup_logging():
 
 logger = setup_logging()
 
+config.load_or_create_secret()
 problems = config.validate()
 for problem in problems:
     logger.error(f"CONFIG ERROR: {problem}")
@@ -105,6 +106,12 @@ def webhook():
     raw_data = _raw_body()
     logger.info("=" * 60)
     logger.info(f"Webhook received. Raw: {_redact(raw_data.decode('utf-8', 'replace'))}")
+
+    if b"{{" in raw_data:
+        # TradingView only fills {{...}} placeholders for order-fill alerts
+        # on a strategy; anywhere else they arrive literally.
+        logger.error("Rejected alert: it contains an unfilled {{...}} placeholder. " + translate.NOT_A_SIGNAL_HINT)
+        return jsonify({"status": "error", "message": translate.NOT_A_SIGNAL_HINT}), 400
 
     try:
         parsed_data = parse_alert(raw_data)
@@ -202,12 +209,39 @@ def test_endpoint():
         return jsonify({"status": "error", "message": str(exc)}), 400
 
 
+def _log_tradingview_setup():
+    source = config.SECRET_SOURCE
+    if source == "generated":
+        logger.info(f"Generated a webhook secret and saved it to {config.SECRET_FILE}")
+    elif source == "ephemeral":
+        logger.warning(
+            f"Generated a webhook secret but couldn't save it to {config.SECRET_FILE}; "
+            "it will CHANGE on every restart and break your TradingView alerts. "
+            "Map a writable /config path or set WEBHOOK_SECRET."
+        )
+    elif source == "file":
+        logger.info(f"Webhook secret loaded from {config.SECRET_FILE}")
+    # The full secret is printed only on the start that created it, so it
+    # can be copied from the first log; afterwards read it from the file.
+    show = source in ("generated", "ephemeral")
+    logger.info("TradingView alert setup:")
+    logger.info(f"  Webhook URL: {config.webhook_url(show)}")
+    if not show and config.REQUIRE_SECRET:
+        where = config.SECRET_FILE if source == "file" else "the WEBHOOK_SECRET setting"
+        logger.info(f"  (your secret is in {where})")
+    if not config.PUBLIC_URL:
+        logger.info("  Set PUBLIC_URL to your tunnel's https address to print the exact URL.")
+    logger.info("  Message:     {{strategy.order.alert_message}}")
+    logger.info('  Condition:   your strategy, "Order fills and alert() function calls"')
+
+
 def main():
     logger.info("=" * 60)
     logger.info("TradingView -> MT5 Signal Bridge")
     logger.info(f"Flask:  http://{config.FLASK_HOST}:{config.FLASK_PORT}")
     logger.info(f"ZeroMQ: {zmq_client.ADDRESS} (PUSH -> MT5 PULL)")
     logger.info(f"Webhook secret required: {config.REQUIRE_SECRET}")
+    _log_tradingview_setup()
     logger.info("=" * 60)
     app.run(host=config.FLASK_HOST, port=config.FLASK_PORT, threaded=True, debug=False)
 
