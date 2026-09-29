@@ -10,6 +10,12 @@
 //| v3.3: BUY/SELL (non double-down) skips when a resting-limit      |
 //|       position is already open in that direction, and clears     |
 //|       same-direction resting limits before a market entry.       |
+//| v3.4: Failed closes are queued and retried until they succeed    |
+//|       (e.g. after a broker disconnect); broker connection loss / |
+//|       recovery is logged and pushed as a notification; retcode   |
+//|       10046 (hedge prohibited) gets a readable explanation.      |
+//|       Closes run oldest-first (FIFO accounts reject anything else |
+//|       with 10045); MODIFY updates every position on the symbol.  |
 //|                                                                  |
 //| Receives signals INSTANTLY via ZeroMQ PULL socket from Flask.   |
 //| Latency: ~1-5ms from Flask to MT5                                |
@@ -20,9 +26,9 @@
 //|   3. Copy libzmq.dll & libsodium.dll to MQL5/Libraries/          |
 //|   4. Enable "Allow DLL imports" in MT5 Options                   |
 //+------------------------------------------------------------------+
-#property copyright "TradingView ZeroMQ Executor v3.3"
+#property copyright "TradingView ZeroMQ Executor v3.4"
 #property link      "https://github.com/ding9736/MQL5-ZeroMQ"
-#property version   "3.30"
+#property version   "3.40"
 #property strict
 
 // ZeroMQ library (ding9736 version)
@@ -53,6 +59,11 @@ input int      SpreadRetryDelayMs  = 2000;        // Delay between retries (ms)
 input bool     EnableLimitOrders   = true;        // Honor ARM_LONG/ARM_SHORT/CANCEL_* signals
 input int      LimitOrderExpiryMin = 0;           // Pending order expiry in minutes (0 = GTC, no expiry)
 
+//--- Reliability (v3.4) ---
+input int      CloseRetrySec       = 10;          // Retry a failed close every N seconds while connected
+input int      CloseRetryMaxMin    = 1440;        // Give up retrying a failed close after N minutes (0 = never)
+input bool     NotifyConnection    = true;        // Push notification on broker disconnect/reconnect (needs MetaQuotes ID set in Options > Notifications)
+
 //+------------------------------------------------------------------+
 //| Global Variables                                                  |
 //+------------------------------------------------------------------+
@@ -70,13 +81,22 @@ int         g_limitOrdersCancelled = 0;
 int         g_bracketsModified = 0;
 uint        g_lastLogTime = 0;
 
+// [v3.4] Tickets whose close failed; retried from OnTimer until they close
+// or disappear (e.g. hit their broker-side SL/TP in the meantime).
+ulong       g_retryTickets[];
+datetime    g_retryQueuedAt[];
+uint        g_lastRetryTick = 0;
+int         g_closesRetried = 0;
+bool        g_wasConnected = true;
+datetime    g_disconnectedAt = 0;
+
 //+------------------------------------------------------------------+
 //| Expert initialization function                                    |
 //+------------------------------------------------------------------+
 int OnInit()
 {
    Log("====================================================");
-   Log("TradingView ZeroMQ Executor v3.3 Starting...");
+   Log("TradingView ZeroMQ Executor v3.4 Starting...");
    Log("  Using: ding9736/MQL5-ZeroMQ library");
    Log("====================================================");
 
@@ -118,6 +138,9 @@ int OnInit()
    else
       Log("  Spread Filter: OFF");
 
+   Log("  Close retry: every " + IntegerToString(CloseRetrySec) + "s"
+       + (CloseRetryMaxMin > 0 ? (", give up after " + IntegerToString(CloseRetryMaxMin) + "min") : ", no time limit")
+       + " | Connection notifications: " + (NotifyConnection ? "ON" : "OFF"));
    Log("  Resting Limit Orders: " + (EnableLimitOrders ? "ON" : "OFF")
        + (EnableLimitOrders ? (LimitOrderExpiryMin > 0 ? (" (expiry " + IntegerToString(LimitOrderExpiryMin) + "min)") : " (GTC)") : ""));
 
@@ -235,6 +258,9 @@ void OnDeinit(const int reason)
    Log("  Limit orders armed: " + IntegerToString(g_limitOrdersArmed));
    Log("  Limit orders cancelled: " + IntegerToString(g_limitOrdersCancelled));
    Log("  Brackets modified: " + IntegerToString(g_bracketsModified));
+   Log("  Closes recovered by retry: " + IntegerToString(g_closesRetried));
+   if(ArraySize(g_retryTickets) > 0)
+      Log("WARNING: " + IntegerToString(ArraySize(g_retryTickets)) + " failed close(s) still pending - check open positions manually");
 
    // Clean up ZeroMQ
    if(g_pullSocket != NULL)
@@ -265,6 +291,127 @@ void OnTimer()
 
    // Check for messages
    CheckForMessages();
+
+   MonitorConnection();
+   RetryFailedCloses();
+}
+
+//+------------------------------------------------------------------+
+//| [v3.4] Log + notify when the terminal loses / regains the broker. |
+//| While disconnected every trade request fails (10031), so this is  |
+//| the thing to know about in real time, not after the fact.         |
+//+------------------------------------------------------------------+
+void MonitorConnection()
+{
+   bool connected = (bool)TerminalInfoInteger(TERMINAL_CONNECTED);
+   if(connected == g_wasConnected) return;
+   g_wasConnected = connected;
+
+   string msg;
+   if(!connected)
+   {
+      g_disconnectedAt = TimeLocal();   // server time stops advancing while disconnected
+      msg = "TV-ZMQ: MT5 lost connection to the broker - trade signals will fail until it reconnects";
+   }
+   else
+   {
+      int secs = g_disconnectedAt > 0 ? (int)(TimeLocal() - g_disconnectedAt) : 0;
+      string took = secs < 120 ? (IntegerToString(secs) + "s") : ("~" + IntegerToString(secs / 60) + " min");
+      msg = "TV-ZMQ: MT5 reconnected to the broker after " + took
+            + (ArraySize(g_retryTickets) > 0 ? ("; retrying " + IntegerToString(ArraySize(g_retryTickets)) + " failed close(s)") : "");
+   }
+   Print("[ZMQ] " + (connected ? "OK: " : "WARNING: ") + msg);   // always logged, regardless of EnableLogging
+   if(NotifyConnection)
+      SendNotification(StringSubstr(msg, 0, 255));
+}
+
+//+------------------------------------------------------------------+
+//| [v3.4] Queue a ticket whose close failed, so it's retried.        |
+//+------------------------------------------------------------------+
+void QueueCloseRetry(ulong ticket)
+{
+   int n = ArraySize(g_retryTickets);
+   for(int i = 0; i < n; i++)
+      if(g_retryTickets[i] == ticket) return;
+   ArrayResize(g_retryTickets, n + 1);
+   ArrayResize(g_retryQueuedAt, n + 1);
+   g_retryTickets[n] = ticket;
+   g_retryQueuedAt[n] = TimeLocal();
+   Print("[ZMQ] WARNING: close of ticket " + IntegerToString((long)ticket) + " failed - queued for retry every "
+         + IntegerToString(CloseRetrySec) + "s");
+}
+
+void RemoveCloseRetry(int index)
+{
+   int last = ArraySize(g_retryTickets) - 1;
+   g_retryTickets[index] = g_retryTickets[last];
+   g_retryQueuedAt[index] = g_retryQueuedAt[last];
+   ArrayResize(g_retryTickets, last);
+   ArrayResize(g_retryQueuedAt, last);
+}
+
+//+------------------------------------------------------------------+
+//| [v3.4] Retry queued closes. Pine already exited these positions,  |
+//| so closing them late is still correct; only the exact tickets     |
+//| that failed are retried, never a position opened afterwards.      |
+//+------------------------------------------------------------------+
+void RetryFailedCloses()
+{
+   if(ArraySize(g_retryTickets) == 0) return;
+   if(GetTickCount() - g_lastRetryTick < (uint)MathMax(CloseRetrySec, 1) * 1000) return;
+   g_lastRetryTick = GetTickCount();
+   if(!TerminalInfoInteger(TERMINAL_CONNECTED)) return;
+
+   // Drop tickets that are already gone (closed by SL/TP or manually).
+   for(int i = ArraySize(g_retryTickets) - 1; i >= 0; i--)
+   {
+      if(PositionSelectByTicket(g_retryTickets[i])) continue;
+      Log("Retry: ticket " + IntegerToString((long)g_retryTickets[i]) + " is no longer open (closed by SL/TP or manually) - dropping it");
+      RemoveCloseRetry(i);
+   }
+
+   // Retry the rest oldest-first, same FIFO rule as ClosePositions().
+   ulong openTickets[];
+   int n = CollectPositionsFifo("", -1, openTickets);
+   for(int k = 0; k < n; k++)
+   {
+      int i = -1;
+      for(int j = 0; j < ArraySize(g_retryTickets); j++)
+         if(g_retryTickets[j] == openTickets[k]) { i = j; break; }
+      if(i < 0) continue;
+
+      ulong ticket = g_retryTickets[i];
+      if(trade.PositionClose(ticket))
+      {
+         Print("[ZMQ] OK: Closed ticket " + IntegerToString((long)ticket) + " on retry");
+         g_closesRetried++;
+         RemoveCloseRetry(i);
+         continue;
+      }
+      if(CloseRetryMaxMin > 0 && TimeLocal() - g_retryQueuedAt[i] > CloseRetryMaxMin * 60)
+      {
+         string msg = "TV-ZMQ: gave up closing ticket " + IntegerToString((long)ticket) + " after "
+                      + IntegerToString(CloseRetryMaxMin) + " min (" + RetcodeText() + ") - close it manually";
+         Print("[ZMQ] ERROR: " + msg);
+         if(NotifyConnection) SendNotification(StringSubstr(msg, 0, 255));   // 255-char push limit
+         RemoveCloseRetry(i);
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| [v3.4] "<code> - <description>" for the last trade result, with   |
+//| a readable explanation for codes CTrade doesn't describe.         |
+//+------------------------------------------------------------------+
+string RetcodeText()
+{
+   uint code = trade.ResultRetcode();
+   string desc = trade.ResultRetcodeDescription();
+   if(code == 10045)
+      desc = "FIFO close rule: an older position on this symbol must be closed first (US/NFA FIFO rules)";
+   else if(code == 10046)
+      desc = "hedge prohibited: an opposite position is open on this symbol and the account does not allow hedging (e.g. US/NFA FIFO rules)";
+   return IntegerToString(code) + " - " + desc;
 }
 
 //+------------------------------------------------------------------+
@@ -632,8 +779,51 @@ bool ExecuteTrade(string action, string symbol, double lots, double slPips, doub
       }
    }
 
-   Log("FAIL: TRADE FAILED: " + IntegerToString(trade.ResultRetcode()) + " - " + trade.ResultRetcodeDescription());
+   Log("FAIL: TRADE FAILED: " + RetcodeText());
    return false;
+}
+
+//+------------------------------------------------------------------+
+//| [v3.4] Tickets of this EA's positions matching symbol ("" = any)  |
+//| and type (-1 = any), oldest first (by open time, then ticket).    |
+//+------------------------------------------------------------------+
+int CollectPositionsFifo(string symbol, int positionType, ulong &tickets[])
+{
+   long times[];
+   int n = 0;
+   ArrayResize(tickets, 0);
+
+   for(int i = 0; i < PositionsTotal(); i++)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(PositionGetInteger(POSITION_MAGIC) != MagicNumber) continue;
+      if(symbol != "" && PositionGetString(POSITION_SYMBOL) != symbol) continue;
+      if(positionType >= 0 && PositionGetInteger(POSITION_TYPE) != positionType) continue;
+
+      ArrayResize(tickets, n + 1);
+      ArrayResize(times, n + 1);
+      tickets[n] = ticket;
+      times[n] = PositionGetInteger(POSITION_TIME_MSC);
+      n++;
+   }
+
+   // Insertion sort - there are only ever a handful of positions.
+   for(int a = 1; a < n; a++)
+   {
+      ulong t = tickets[a];
+      long tm = times[a];
+      int b = a - 1;
+      while(b >= 0 && (times[b] > tm || (times[b] == tm && tickets[b] > t)))
+      {
+         tickets[b + 1] = tickets[b];
+         times[b + 1] = times[b];
+         b--;
+      }
+      tickets[b + 1] = t;
+      times[b + 1] = tm;
+   }
+   return n;
 }
 
 //+------------------------------------------------------------------+
@@ -649,22 +839,14 @@ bool ClosePositions(string symbol, int positionType)
    int closedCount = 0;
    int failedCount = 0;
 
-   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   // Oldest first: NFA/FIFO accounts reject closing a newer position on a
+   // symbol while an older one is open (10045), e.g. the double-down leg.
+   ulong tickets[];
+   int n = CollectPositionsFifo(symbol, positionType, tickets);
+
+   for(int i = 0; i < n; i++)
    {
-      ulong ticket = PositionGetTicket(i);
-      if(ticket == 0) continue;
-
-      if(PositionGetInteger(POSITION_MAGIC) != MagicNumber) continue;
-
-      string posSymbol = PositionGetString(POSITION_SYMBOL);
-      if(symbol != "" && posSymbol != symbol) continue;
-
-      if(positionType >= 0)
-      {
-         ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-         if(posType != positionType) continue;
-      }
-
+      ulong ticket = tickets[i];
       if(trade.PositionClose(ticket))
       {
          Log("OK: Closed ticket " + IntegerToString((int)ticket));
@@ -672,8 +854,9 @@ bool ClosePositions(string symbol, int positionType)
       }
       else
       {
-         Log("FAIL: Failed to close ticket " + IntegerToString((int)ticket) + ": " + trade.ResultRetcodeDescription());
+         Log("FAIL: Failed to close ticket " + IntegerToString((int)ticket) + ": " + RetcodeText());
          failedCount++;
+         QueueCloseRetry(ticket);
       }
    }
 
@@ -781,7 +964,7 @@ bool ArmLimitOrder(string symbol, bool isLong, double limitPrice, double lots,
       return true;
    }
 
-   Log("FAIL: ARM FAILED: " + IntegerToString(trade.ResultRetcode()) + " - " + trade.ResultRetcodeDescription());
+   Log("FAIL: ARM FAILED: " + RetcodeText());
    return false;
 }
 
@@ -853,7 +1036,7 @@ int DeletePendingLimitOrders(string symbol, ENUM_ORDER_TYPE orderType, long requ
       }
       else
       {
-         Log("FAIL: Failed to delete ticket " + IntegerToString((int)ticket) + ": " + trade.ResultRetcodeDescription());
+         Log("FAIL: Failed to delete ticket " + IntegerToString((int)ticket) + ": " + RetcodeText());
       }
    }
 
@@ -883,12 +1066,16 @@ bool ModifyOpenPosition(string symbol, bool hasSl, double newSl, bool hasTp, dou
 
    int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
 
-   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   // Pine's bracket covers its whole position, so after a double-down every
+   // leg gets the new SL/TP (previously only the newest leg was modified).
+   ulong tickets[];
+   int n = CollectPositionsFifo(symbol, -1, tickets);
+   int modified = 0, failed = 0;
+
+   for(int i = 0; i < n; i++)
    {
-      ulong ticket = PositionGetTicket(i);
-      if(ticket == 0) continue;
-      if(PositionGetInteger(POSITION_MAGIC) != MagicNumber) continue;
-      if(PositionGetString(POSITION_SYMBOL) != symbol) continue;
+      ulong ticket = tickets[i];
+      if(!PositionSelectByTicket(ticket)) continue;
 
       double curSl = PositionGetDouble(POSITION_SL);
       double curTp = PositionGetDouble(POSITION_TP);
@@ -903,15 +1090,21 @@ bool ModifyOpenPosition(string symbol, bool hasSl, double newSl, bool hasTp, dou
       {
          Log("OK: BRACKET MODIFIED! Ticket: " + IntegerToString((int)ticket));
          g_bracketsModified++;
-         return true;
+         modified++;
       }
-
-      Log("FAIL: MODIFY FAILED: " + IntegerToString(trade.ResultRetcode()) + " - " + trade.ResultRetcodeDescription());
-      return false;
+      else
+      {
+         Log("FAIL: MODIFY FAILED for ticket " + IntegerToString((int)ticket) + ": " + RetcodeText());
+         failed++;
+      }
    }
 
-   Log("SKIP: No open position found for " + symbol + " to modify");
-   return false;
+   if(n == 0)
+   {
+      Log("SKIP: No open position found for " + symbol + " to modify");
+      return false;
+   }
+   return (failed == 0 && modified > 0);
 }
 
 //+------------------------------------------------------------------+
