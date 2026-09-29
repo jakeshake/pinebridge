@@ -1,6 +1,6 @@
-# MT5 + EA Setup (mt5-windows container)
+# MT5 + EA Setup (pinebridge-mt5 container)
 
-The `mt5-windows` image (`mt5-windows/Dockerfile`) is
+The `pinebridge-mt5` image (`mt5-windows/Dockerfile`) is
 [dockur/windows](https://github.com/dockur/windows) with this repo's
 `mt5-windows/oem/` files baked in. dockur boots a real Windows VM via
 KVM/QEMU, copies those files to `C:\OEM` during its unattended install, and
@@ -99,9 +99,9 @@ running this, plus an eighth on the first from-scratch Unraid install
   this app on public/private networks?") on first launch -- confirmed
   live, clicked through manually. Nothing here can click that unattended
   for real users, and if it's never answered the port may stay blocked
-  for connections from outside the VM (i.e. from signal-bridge). Added an
+  for connections from outside the VM (i.e. from pinebridge-bridge). Added an
   inbound firewall rule for port 5555 ahead of time so Windows never needs
-  to ask. **Confirmed** on the fresh Unraid install: signal-bridge reached
+  to ask. **Confirmed** on the fresh Unraid install: pinebridge-bridge reached
   port 5555 with no prompt ever clicked.
 
 - **A truly fresh VM has no MQL5 standard library until MT5's first run.**
@@ -191,7 +191,7 @@ inside the VM (via the noVNC viewer or RDP on port 3389):
 
 ## Networking
 
-signal-bridge connects to `ZMQ_HOST:ZMQ_PORT` (default `mt5-windows:5555`).
+pinebridge-bridge connects to `ZMQ_HOST:ZMQ_PORT` (default `pinebridge-mt5:5555`).
 With the default Docker bridge network in `docker-compose.yml`, compose's
-built-in DNS resolves `mt5-windows` to the right container automatically --
+built-in DNS resolves `pinebridge-mt5` to the right container automatically --
 no extra networking setup needed for a single-host deployment.

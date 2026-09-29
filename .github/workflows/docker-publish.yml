@@ -33,10 +33,15 @@ jobs:
     strategy:
       matrix:
         include:
+          # legacy_image: the pre-rename (tv-mt5-bridge) name, still published
+          # during the transition so existing installs keep getting updates.
+          # Remove once installs have moved to the pinebridge-* images.
           - context: signal-bridge
-            image: tv-mt5-bridge-signal-bridge
+            image: pinebridge-bridge
+            legacy_image: tv-mt5-bridge-signal-bridge
           - context: mt5-windows
-            image: tv-mt5-bridge-windows
+            image: pinebridge-mt5
+            legacy_image: tv-mt5-bridge-windows
     steps:
       - uses: actions/checkout@v4
 
@@ -56,7 +61,15 @@ jobs:
           else
             ref_tag=$(echo "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9_.-' '-' | sed 's/-*$//')
           fi
-          printf 'tags<<EOF\n%s:%s\n%s:%s\nEOF\n' "$image" "$ref_tag" "$image" "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          legacy="ghcr.io/${{ github.repository_owner }}/${{ matrix.legacy_image }}"
+          {
+            echo 'tags<<EOF'
+            for img in "$image" "$legacy"; do
+              echo "$img:$ref_tag"
+              echo "$img:$GITHUB_SHA"
+            done
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -64,3 +77,4 @@ jobs:
           context: ./${{ matrix.context }}
           push: true
           tags: ${{ steps.tags.outputs.tags }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}

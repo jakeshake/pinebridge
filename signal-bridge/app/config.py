@@ -21,8 +21,8 @@ FLASK_PORT = int(os.environ.get("FLASK_PORT", "5000"))
 
 # ZeroMQ -- the MT5 EA binds a PULL socket and listens; this service
 # connects to it as a PUSH socket. ZMQ_HOST must point at wherever the
-# mt5-windows container/VM is reachable. The default is the Docker host's
-# address on the default bridge network, where mt5-windows publishes 5555,
+# pinebridge-mt5 container/VM is reachable. The default is the Docker host's
+# address on the default bridge network, where pinebridge-mt5 publishes 5555,
 # so a stock Unraid install needs no change here.
 ZMQ_HOST = os.environ.get("ZMQ_HOST") or "172.17.0.1"
 ZMQ_PORT = int(os.environ.get("ZMQ_PORT", "5555"))

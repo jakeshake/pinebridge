@@ -1,8 +1,16 @@
-# tv-mt5-bridge
+<p align="center"><img src="docs/icons/pinebridge.png" alt="Pinebridge" width="160"></p>
 
-Self-hosted TradingView → MetaTrader 5 bridge. Turns a TradingView alert
-into a live trade on your own MT5 account, running entirely on your own
-hardware (e.g. an Unraid box) instead of a paid third-party bridge service.
+# Pinebridge
+
+**TradingView alerts to MetaTrader 5, self-hosted.**
+
+Tired of paying a monthly fee just to get your TradingView alerts into
+MetaTrader 5? Or renting a VPS only so MT5 stays online around the clock?
+If you have an Unraid server, you already own the hardware for both.
+Pinebridge receives your TradingView strategy alerts and places the trades
+in MT5, which runs in a Windows container on your own server. No
+signal-relay subscription, no VPS bill, and your broker login stays on your
+own server instead of with a third-party service.
 
 > **This executes real trades on a real or demo account with no human in
 > the loop.** Read the [risk notice](LICENSE) before using this with a live
@@ -11,16 +19,16 @@ hardware (e.g. an Unraid box) instead of a paid third-party bridge service.
 ## How it works
 
 ```
-TradingView alert -> Cloudflare Tunnel -> signal-bridge (Flask) -> ZeroMQ -> MT5 EA -> your broker
+TradingView alert -> Cloudflare Tunnel -> pinebridge-bridge (Flask) -> ZeroMQ -> MT5 EA -> your broker
 ```
 
 Three containers:
 
 | Container | What it does |
 |---|---|
-| `cloudflared` | Exposes the webhook to the internet via a Cloudflare Tunnel — no port-forwarding |
-| `signal-bridge` | Flask app: authenticates, parses, and translates TradingView alerts, then pushes them to MT5 over ZeroMQ |
-| `mt5-windows` | A Windows 11 VM ([dockur/windows](https://github.com/dockur/windows)) running MetaTrader 5 + the `TradingViewZeroMQExecutor` Expert Advisor |
+| `pinebridge-tunnel` | Optional: exposes the webhook to the internet via a Cloudflare Tunnel — no port-forwarding. Skip it if you already run a tunnel. |
+| `pinebridge-bridge` | Flask app: authenticates, parses, and translates TradingView alerts, then pushes them to MT5 over ZeroMQ |
+| `pinebridge-mt5` | A Windows 11 VM ([dockur/windows](https://github.com/dockur/windows)) running MetaTrader 5 + the `TradingViewZeroMQExecutor` Expert Advisor |
 
 See [docs/architecture.md](docs/architecture.md) for the full data-flow
 diagram and the reasoning behind each piece.
@@ -32,7 +40,7 @@ diagram and the reasoning behind each piece.
    [docs/cloudflare-tunnel-setup.md](docs/cloudflare-tunnel-setup.md) and
    put the token in `.env`.
 3. `docker compose up -d`
-4. Watch `mt5-windows` provision itself at `http://<host>:8006` (noVNC) —
+4. Watch `pinebridge-mt5` provision itself at `http://<host>:8006` (noVNC) —
    see [docs/mt5-ea-setup.md](docs/mt5-ea-setup.md) for what's automated
    and how to verify it worked.
 5. Point a TradingView alert at your tunnel's `/webhook` URL using the
@@ -40,9 +48,10 @@ diagram and the reasoning behind each piece.
 
 ## Quick start (Unraid)
 
-See [docs/unraid-install.md](docs/unraid-install.md) — add this repo as a
-Community Applications template repository and install the three apps from
-the **Apps** tab.
+See [docs/unraid-install.md](docs/unraid-install.md): add the templates with
+one terminal command, then install the containers from **Docker > Add
+Container**. Coming from the old `tv-mt5-bridge` names? See
+[Moving from tv-mt5-bridge](docs/unraid-install.md#moving-from-tv-mt5-bridge-the-old-name).
 
 ## Security
 
@@ -58,21 +67,25 @@ the **Apps** tab.
 
 ## Repo layout
 
-- `signal-bridge/` — the Flask + ZeroMQ webhook receiver
-- `mt5-windows/` — image built on dockur/windows; `oem/` holds the
+- `signal-bridge/` — source of the `pinebridge-bridge` image (Flask + ZeroMQ webhook receiver)
+- `mt5-windows/` — source of the `pinebridge-mt5` image, built on dockur/windows; `oem/` holds the
   provisioning scripts + EA source baked into it
 - `unraid-templates/` — Unraid container templates
 - `docs/` — setup guides for each piece
 
 ## Status
 
-The MT5 provisioning script (`mt5-windows/oem/setup-mt5.ps1`) has been run
-end-to-end on real Unraid hardware: MT5 installs, the EA compiles and
-auto-attaches, and it binds its ZeroMQ socket. See
-[docs/mt5-ea-setup.md](docs/mt5-ea-setup.md) for what was found along the
-way. Not yet tested: a completely fresh first boot of the packaged
-`tv-mt5-bridge-windows` image straight from the Unraid template, and a live
-TradingView → MT5 trade through the whole chain. Issues and PRs welcome.
+Tested on real Unraid hardware with a Forex.com demo account:
+- **Install:** a fresh first boot installs MT5, compiles the EA and
+  attaches it.
+- **Live alerts end to end:** market entries and exits, resting limit
+  orders (arm/cancel), double-down adds and SL/TP moves, all from live
+  TradingView alerts through a Cloudflare Tunnel.
+- **Failure handling:** close retries after a broker disconnect, and
+  FIFO-compliant closing on a US account.
+
+See [docs/mt5-ea-setup.md](docs/mt5-ea-setup.md) for what was found along
+the way. Issues and PRs welcome.
 
 ## License
 

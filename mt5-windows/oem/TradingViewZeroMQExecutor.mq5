@@ -26,7 +26,7 @@
 //|   3. Copy libzmq.dll & libsodium.dll to MQL5/Libraries/          |
 //|   4. Enable "Allow DLL imports" in MT5 Options                   |
 //+------------------------------------------------------------------+
-#property copyright "TradingView ZeroMQ Executor v3.4"
+#property copyright "Pinebridge EA (TradingView ZeroMQ Executor) v3.4"
 #property link      "https://github.com/ding9736/MQL5-ZeroMQ"
 #property version   "3.40"
 #property strict
@@ -96,7 +96,7 @@ datetime    g_disconnectedAt = 0;
 int OnInit()
 {
    Log("====================================================");
-   Log("TradingView ZeroMQ Executor v3.4 Starting...");
+   Log("Pinebridge EA (TradingView ZeroMQ Executor) v3.4 Starting...");
    Log("  Using: ding9736/MQL5-ZeroMQ library");
    Log("====================================================");
 
@@ -311,13 +311,13 @@ void MonitorConnection()
    if(!connected)
    {
       g_disconnectedAt = TimeLocal();   // server time stops advancing while disconnected
-      msg = "TV-ZMQ: MT5 lost connection to the broker - trade signals will fail until it reconnects";
+      msg = "Pinebridge: MT5 lost connection to the broker - trade signals will fail until it reconnects";
    }
    else
    {
       int secs = g_disconnectedAt > 0 ? (int)(TimeLocal() - g_disconnectedAt) : 0;
       string took = secs < 120 ? (IntegerToString(secs) + "s") : ("~" + IntegerToString(secs / 60) + " min");
-      msg = "TV-ZMQ: MT5 reconnected to the broker after " + took
+      msg = "Pinebridge: MT5 reconnected to the broker after " + took
             + (ArraySize(g_retryTickets) > 0 ? ("; retrying " + IntegerToString(ArraySize(g_retryTickets)) + " failed close(s)") : "");
    }
    Print("[ZMQ] " + (connected ? "OK: " : "WARNING: ") + msg);   // always logged, regardless of EnableLogging
@@ -390,7 +390,7 @@ void RetryFailedCloses()
       }
       if(CloseRetryMaxMin > 0 && TimeLocal() - g_retryQueuedAt[i] > CloseRetryMaxMin * 60)
       {
-         string msg = "TV-ZMQ: gave up closing ticket " + IntegerToString((long)ticket) + " after "
+         string msg = "Pinebridge: gave up closing ticket " + IntegerToString((long)ticket) + " after "
                       + IntegerToString(CloseRetryMaxMin) + " min (" + RetcodeText() + ") - close it manually";
          Print("[ZMQ] ERROR: " + msg);
          if(NotifyConnection) SendNotification(StringSubstr(msg, 0, 255));   // 255-char push limit

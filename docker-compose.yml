@@ -1,20 +1,20 @@
 services:
-  cloudflared:
+  pinebridge-tunnel:
     image: cloudflare/cloudflared:latest
-    container_name: tv-mt5-cloudflared
+    container_name: pinebridge-tunnel
     restart: unless-stopped
     command: tunnel run
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN}
     depends_on:
-      - signal-bridge
+      - pinebridge-bridge
 
-  signal-bridge:
+  pinebridge-bridge:
     build: ./signal-bridge
-    container_name: tv-mt5-signal-bridge
+    container_name: pinebridge-bridge
     restart: unless-stopped
     environment:
-      - ZMQ_HOST=${ZMQ_HOST:-mt5-windows}
+      - ZMQ_HOST=${ZMQ_HOST:-pinebridge-mt5}
       - ZMQ_PORT=${ZMQ_PORT:-5555}
       # Blank = generated on first start and saved in ./data/config.
       - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
@@ -33,9 +33,9 @@ services:
   # installs MT5 + the ZeroMQ EA on first boot. Requires /dev/kvm (Unraid
   # has it once virtualization is enabled in BIOS) and a Windows license
   # you're entitled to use -- see docs/mt5-ea-setup.md.
-  mt5-windows:
+  pinebridge-mt5:
     build: ./mt5-windows
-    container_name: mt5-windows
+    container_name: pinebridge-mt5
     environment:
       - VERSION=11
       - RAM_SIZE=${RAM_SIZE:-8G}
@@ -55,7 +55,7 @@ services:
     ports:
       - "8006:8006"      # noVNC web viewer -- watch/control the desktop in a browser
       - "3389:3389/tcp"  # RDP, optional
-      - "5555:5555/tcp"  # ZeroMQ PULL socket -- signal-bridge connects here
+      - "5555:5555/tcp"  # ZeroMQ PULL socket -- pinebridge-bridge connects here
     volumes:
       - ./data/windows:/storage
     restart: unless-stopped

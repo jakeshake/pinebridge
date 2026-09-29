@@ -251,11 +251,11 @@ if (Test-Path (Join-Path $ExpertsDir "TradingViewZeroMQExecutor.ex5")) {
 # public/private networks?" firewall prompt on first launch. Clicking
 # through it manually worked, but nothing here can click it unattended
 # for real users, and if it's never answered the port may stay blocked
-# for connections from outside the VM (i.e. from signal-bridge). Adding
+# for connections from outside the VM (i.e. from pinebridge-bridge). Adding
 # an inbound firewall rule for the port ahead of time so Windows never
 # needs to ask.
 Write-Host "Pre-authorizing ZeroMQ port 5555 through Windows Firewall..."
-New-NetFirewallRule -DisplayName "MT5 ZeroMQ (tv-mt5-bridge)" -Direction Inbound -Protocol TCP -LocalPort 5555 -Action Allow -ErrorAction SilentlyContinue | Out-Null
+New-NetFirewallRule -DisplayName "MT5 ZeroMQ (Pinebridge)" -Direction Inbound -Protocol TCP -LocalPort 5555 -Action Allow -ErrorAction SilentlyContinue | Out-Null
 
 # ---------------------------------------------------------------------------
 # 5. Startup config: enable Algo Trading + DLL imports, auto-attach the EA.

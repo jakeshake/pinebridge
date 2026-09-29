@@ -98,7 +98,7 @@ curl -X POST https://your-tunnel-hostname/webhook \
   -d "signal=long,symbol=EURUSD,qty=100000,entry_price=1.0850,sl_price=1.0800,tp_price=1.0950,secret=YOUR_SECRET"
 ```
 
-Or use `GET /test` on signal-bridge for a self-describing summary of
+Or use `GET /test` on pinebridge-bridge for a self-describing summary of
 supported signals, and `POST /test` (optionally `?send=1`) to dry-run the
 parser without touching the real `/webhook` route.
 
