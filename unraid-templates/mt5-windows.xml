@@ -12,6 +12,7 @@
   <Overview>Runs a full Windows 11 VM (dockur/windows, KVM/QEMU) that installs MetaTrader 5 and the TradingViewZeroMQExecutor EA by itself on first boot -- no files to download. First boot takes roughly 15-70 minutes (Windows download + install, then MT5 setup); watch it via the WebUI. Requires /dev/kvm on the host (enable virtualization in BIOS) and your own Windows license for anything beyond evaluation use.</Overview>
   <Category>Other:</Category>
   <WebUI>http://[IP]:[PORT:8006]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/jakeshake/tv-mt5-bridge/main/unraid-templates/mt5-windows.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/jakeshake/tv-mt5-bridge/main/docs/icon.png</Icon>
   <ExtraParams>--device=/dev/kvm --device=/dev/net/tun --cap-add=NET_ADMIN --stop-timeout 120</ExtraParams>
   <PostArgs/>

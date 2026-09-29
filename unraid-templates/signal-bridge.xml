@@ -12,6 +12,7 @@
   <Overview>Receives TradingView webhook alerts and pushes them over ZeroMQ to the mt5-windows container's Expert Advisor. Part of tv-mt5-bridge -- a self-hosted TradingView-to-MT5 bridge. Requires a shared webhook secret and the mt5-windows container running alongside it.</Overview>
   <Category>Other:</Category>
   <WebUI>http://[IP]:[PORT:5000]/health</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/jakeshake/tv-mt5-bridge/main/unraid-templates/signal-bridge.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/jakeshake/tv-mt5-bridge/main/docs/icon.png</Icon>
   <ExtraParams/>
   <PostArgs/>

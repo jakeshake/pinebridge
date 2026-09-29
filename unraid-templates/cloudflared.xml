@@ -12,6 +12,7 @@
   <Overview>Cloudflare Tunnel connector that exposes the signal-bridge webhook to the internet with a stable HTTPS URL and no port-forwarding. Create the tunnel and token in the Cloudflare Zero Trust dashboard first -- see docs/cloudflare-tunnel-setup.md in the tv-mt5-bridge repo.</Overview>
   <Category>Other:</Category>
   <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/jakeshake/tv-mt5-bridge/main/unraid-templates/cloudflared.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/jakeshake/tv-mt5-bridge/main/docs/icon.png</Icon>
   <ExtraParams/>
   <PostArgs>tunnel run</PostArgs>
