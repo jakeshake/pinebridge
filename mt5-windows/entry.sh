@@ -8,7 +8,7 @@ set -euo pipefail
 mkdir -p /oem
 
 # Bundled provisioning files; -n keeps anything a user mounted over /oem.
-cp -rn /opt/tv-mt5/oem/. /oem/
+cp -rn /opt/pinebridge/oem/. /oem/
 
 umask 077
 {

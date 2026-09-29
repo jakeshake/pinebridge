@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>pinebridge-tunnel</Name>
+  <Repository>cloudflare/cloudflared:latest</Repository>
+  <Registry>https://hub.docker.com/r/cloudflare/cloudflared</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/jakeshake/pinebridge/issues</Support>
+  <Project>https://github.com/jakeshake/pinebridge</Project>
+  <Overview>Pinebridge: TradingView alerts to MetaTrader 5. Send TradingView alerts straight to MetaTrader 5 on your own Unraid server. No paid signal-relay service, no VPS. This optional container is a Cloudflare Tunnel connector that exposes the pinebridge-bridge webhook to the internet with a stable HTTPS URL and no port-forwarding. Create the tunnel and token in the Cloudflare Zero Trust dashboard first -- see docs/cloudflare-tunnel-setup.md in the Pinebridge repo. Skip it if you already run a Cloudflare tunnel.</Overview>
+  <Category>Other:</Category>
+  <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/jakeshake/pinebridge/main/unraid-templates/pinebridge-tunnel.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/jakeshake/pinebridge/main/docs/icons/pinebridge-tunnel.png</Icon>
+  <ExtraParams/>
+  <PostArgs>tunnel run</PostArgs>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>Create a tunnel in the Cloudflare Zero Trust dashboard and point its public hostname at http://[your Unraid IP]:5080 (the pinebridge-bridge WebUI Port) before starting this container. Optional: skip this container if you already run a Cloudflare tunnel -- just add a public hostname to it.</Requires>
+  <Config Name="TUNNEL_TOKEN" Target="TUNNEL_TOKEN" Default="" Mode="" Description="Token for the tunnel you created in the Cloudflare Zero Trust dashboard" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+</Container>

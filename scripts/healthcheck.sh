@@ -6,11 +6,11 @@ set -euo pipefail
 BRIDGE_HOST="${1:-localhost}"
 BRIDGE_PORT="${2:-5000}"
 
-echo "== signal-bridge /health =="
+echo "== pinebridge-bridge /health =="
 curl -fsS "http://${BRIDGE_HOST}:${BRIDGE_PORT}/health" | tee /dev/stderr | grep -q '"status": *"healthy"' \
-  && echo "OK" || echo "FAILED -- is the signal-bridge container running?"
+  && echo "OK" || echo "FAILED -- is the pinebridge-bridge container running?"
 
 echo
-echo "== signal-bridge /test =="
+echo "== pinebridge-bridge /test =="
 curl -fsS "http://${BRIDGE_HOST}:${BRIDGE_PORT}/test"
 echo

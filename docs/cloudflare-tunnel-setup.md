@@ -1,19 +1,19 @@
 # Cloudflare Tunnel Setup
 
-TradingView only sends webhooks to a public HTTPS address, so signal-bridge
+TradingView only sends webhooks to a public HTTPS address, so pinebridge-bridge
 needs one. A Cloudflare Tunnel provides it without opening router ports.
 Pick one route:
 
 - **A. You already run a Cloudflare tunnel** (e.g. a cloudflared container
   serving other apps): add a public hostname to that tunnel with service
-  `http://<unraid-ip>:5080` (signal-bridge's WebUI Port). There's nothing
+  `http://<unraid-ip>:5080` (pinebridge-bridge's WebUI Port). There's nothing
   to install. Skip to step 5 below.
 - **B. No tunnel yet (recommended)**: create one below and install the
-  `tv-mt5-cloudflared` template with its token.
+  `pinebridge-tunnel` template with its token.
 - **C. Just trying it out**: a quick tunnel needs no account or domain:
   ```
-  docker run -d --name tv-quick-tunnel cloudflare/cloudflared:latest tunnel --no-autoupdate --url http://<unraid-ip>:5080
-  docker logs tv-quick-tunnel 2>&1 | grep trycloudflare.com
+  docker run -d --name pinebridge-quick-tunnel cloudflare/cloudflared:latest tunnel --no-autoupdate --url http://<unraid-ip>:5080
+  docker logs pinebridge-quick-tunnel 2>&1 | grep trycloudflare.com
   ```
   **Test only**: the `https://....trycloudflare.com` URL changes whenever
   the container restarts, which silently breaks your TradingView alert.
@@ -25,14 +25,14 @@ on it.
 1. Go to the [Cloudflare Zero Trust dashboard](https://one.dash.cloudflare.com/)
    > **Networks > Tunnels**.
 2. **Create a tunnel**, choose "Cloudflared" as the connector.
-3. Give it a name (e.g. `tv-mt5-bridge`) and copy the **tunnel token** shown
+3. Give it a name (e.g. `pinebridge`) and copy the **tunnel token** shown
    during setup -- this is a long string starting with `ey...`. Put it in
    your `.env` as `TUNNEL_TOKEN`.
 4. Under **Public Hostname**, add a route:
    - Subdomain: anything you like, e.g. `tv-webhook`
    - Domain: a domain already on your Cloudflare account
    - Service type: `HTTP`
-   - Service URL: `signal-bridge:5000` with docker-compose, or
+   - Service URL: `pinebridge-bridge:5000` with docker-compose, or
      `<your-unraid-ip>:5080` on Unraid (container names don't resolve on
      Unraid's default bridge network)
 5. Save. Your public webhook URL is now
@@ -40,7 +40,7 @@ on it.
 6. In TradingView, use that full URL (with `/webhook`) plus your secret as
    the alert webhook URL:
    `https://tv-webhook.yourdomain.com/webhook?secret=YOUR_SECRET`.
-   Set signal-bridge's `PUBLIC_URL` to `https://tv-webhook.yourdomain.com`
+   Set pinebridge-bridge's `PUBLIC_URL` to `https://tv-webhook.yourdomain.com`
    and its log prints this exact URL.
 
 You do not need to open any ports on your router -- `cloudflared` makes an

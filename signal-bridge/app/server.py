@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""TradingView Webhook -> MT5 ZeroMQ Bridge.
+"""Pinebridge bridge: TradingView webhook -> MT5 over ZeroMQ.
 
 Architecture:
     TradingView Alert -> POST /webhook -> Flask -> ZeroMQ PUSH -> MT5 EA (PULL)
@@ -237,7 +237,7 @@ def _log_tradingview_setup():
 
 def main():
     logger.info("=" * 60)
-    logger.info("TradingView -> MT5 Signal Bridge")
+    logger.info("Pinebridge bridge: TradingView alerts -> MT5")
     logger.info(f"Flask:  http://{config.FLASK_HOST}:{config.FLASK_PORT}")
     logger.info(f"ZeroMQ: {zmq_client.ADDRESS} (PUSH -> MT5 PULL)")
     logger.info(f"Webhook secret required: {config.REQUIRE_SECRET}")

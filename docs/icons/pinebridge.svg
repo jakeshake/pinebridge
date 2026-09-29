@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#13213d"/>
+      <stop offset="1" stop-color="#0a1222"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.38" r="0.55">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="pine" gradientUnits="userSpaceOnUse" x1="0" y1="70" x2="0" y2="338">
+      <stop offset="0" stop-color="#86efac"/>
+      <stop offset="1" stop-color="#15803d"/>
+    </linearGradient>
+    <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d97706"/>
+      <stop offset="1" stop-color="#92400e"/>
+    </linearGradient>
+    <clipPath id="tile">
+      <rect x="16" y="16" width="480" height="480" rx="108"/>
+    </clipPath>
+  </defs>
+
+  <!-- tile -->
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#bg)"/>
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#glow)"/>
+
+  <g clip-path="url(#tile)">
+    <!-- wooden arch bridge -->
+    <!-- railing (behind the tree) -->
+    <g fill="#b45309">
+      <rect x="16" y="312" width="480" height="9" rx="2"/>
+      <rect x="40" y="312" width="9" height="40"/>
+      <rect x="112" y="312" width="9" height="40"/>
+      <rect x="391" y="312" width="9" height="40"/>
+      <rect x="463" y="312" width="9" height="40"/>
+    </g>
+    <!-- arch and spandrel posts -->
+    <path d="M40 520 Q256 236 472 520" stroke="#92400e" stroke-width="24" fill="none"/>
+    <path d="M40 520 Q256 236 472 520" stroke="#d97706" stroke-width="6" fill="none" opacity="0.55"/>
+    <g fill="#92400e">
+      <rect x="113" y="372" width="13" height="66"/>
+      <rect x="169" y="372" width="13" height="30"/>
+      <rect x="330" y="372" width="13" height="30"/>
+      <rect x="386" y="372" width="13" height="66"/>
+    </g>
+    <!-- plank deck -->
+    <rect x="16" y="350" width="480" height="26" fill="url(#wood)"/>
+    <g stroke="#78350f" stroke-width="3" opacity="0.7">
+      <line x1="64" y1="352" x2="64" y2="374"/><line x1="112" y1="352" x2="112" y2="374"/>
+      <line x1="160" y1="352" x2="160" y2="374"/><line x1="208" y1="352" x2="208" y2="374"/>
+      <line x1="256" y1="352" x2="256" y2="374"/><line x1="304" y1="352" x2="304" y2="374"/>
+      <line x1="352" y1="352" x2="352" y2="374"/><line x1="400" y1="352" x2="400" y2="374"/>
+      <line x1="448" y1="352" x2="448" y2="374"/>
+    </g>
+    <line x1="16" y1="351" x2="496" y2="351" stroke="#fbbf24" stroke-width="3" opacity="0.6"/>
+  </g>
+
+  <!-- trunk, standing on the deck -->
+  <rect x="241" y="318" width="30" height="34" rx="3" fill="#78350f"/>
+
+  <!-- pine: three tiers, one continuous gradient -->
+  <g fill="url(#pine)">
+    <path d="M256 70 L324 166 L188 166 Z"/>
+    <path d="M256 120 L354 244 L158 244 Z"/>
+    <path d="M256 188 L384 326 L128 326 Z"/>
+  </g>
+</svg>

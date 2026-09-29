@@ -1,19 +1,19 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>mt5-windows</Name>
-  <Repository>ghcr.io/jakeshake/tv-mt5-bridge-windows:latest</Repository>
-  <Registry>https://github.com/jakeshake/tv-mt5-bridge/pkgs/container/tv-mt5-bridge-windows</Registry>
+  <Name>pinebridge-mt5</Name>
+  <Repository>ghcr.io/jakeshake/pinebridge-mt5:latest</Repository>
+  <Registry>https://github.com/jakeshake/pinebridge/pkgs/container/pinebridge-mt5</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/jakeshake/tv-mt5-bridge/issues</Support>
-  <Project>https://github.com/jakeshake/tv-mt5-bridge</Project>
-  <Overview>Runs a full Windows 11 VM (dockur/windows, KVM/QEMU) that installs MetaTrader 5 and the TradingViewZeroMQExecutor EA by itself on first boot -- no files to download. First boot takes roughly 15-70 minutes (Windows download + install, then MT5 setup); watch it via the WebUI. Requires /dev/kvm on the host (enable virtualization in BIOS) and your own Windows license for anything beyond evaluation use.</Overview>
+  <Support>https://github.com/jakeshake/pinebridge/issues</Support>
+  <Project>https://github.com/jakeshake/pinebridge</Project>
+  <Overview>Pinebridge: TradingView alerts to MetaTrader 5. Send TradingView alerts straight to MetaTrader 5 on your own Unraid server. No paid signal-relay service, no VPS. This container is the MetaTrader 5 side: it runs a full Windows 11 VM (dockur/windows, KVM/QEMU) that installs MetaTrader 5 and the TradingViewZeroMQExecutor EA by itself on first boot -- no files to download. First boot takes roughly 15-70 minutes (Windows download + install, then MT5 setup); watch it via the WebUI. Requires /dev/kvm on the host (enable virtualization in BIOS) and your own Windows license for anything beyond evaluation use.</Overview>
   <Category>Other:</Category>
   <WebUI>http://[IP]:[PORT:8006]</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/jakeshake/tv-mt5-bridge/main/unraid-templates/mt5-windows.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/jakeshake/tv-mt5-bridge/main/docs/icon.png</Icon>
+  <TemplateURL>https://raw.githubusercontent.com/jakeshake/pinebridge/main/unraid-templates/pinebridge-mt5.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/jakeshake/pinebridge/main/docs/icons/pinebridge-mt5.png</Icon>
   <ExtraParams>--device=/dev/kvm --device=/dev/net/tun --cap-add=NET_ADMIN --stop-timeout 120</ExtraParams>
   <PostArgs/>
   <CPUset/>
@@ -23,7 +23,7 @@
   <Requires>Virtualization (VT-x/AMD-V) enabled in BIOS so /dev/kvm exists. Test with a demo broker account first.</Requires>
   <Config Name="WebUI Port" Target="8006" Default="8006" Mode="tcp" Description="noVNC web viewer -- watch/control the Windows desktop in a browser" Type="Port" Display="always" Required="true" Mask="false">8006</Config>
   <Config Name="RDP Port" Target="3389" Default="3389" Mode="tcp" Description="Optional RDP access" Type="Port" Display="advanced" Required="false" Mask="false">3389</Config>
-  <Config Name="ZMQ Port" Target="5555" Default="5555" Mode="tcp" Description="ZeroMQ port the EA listens on -- signal-bridge connects to 172.17.0.1 (this server, from Docker) or [Unraid IP]:this port" Type="Port" Display="always" Required="true" Mask="false">5555</Config>
+  <Config Name="ZMQ Port" Target="5555" Default="5555" Mode="tcp" Description="ZeroMQ port the EA listens on -- pinebridge-bridge connects to 172.17.0.1 (this server, from Docker) or [Unraid IP]:this port" Type="Port" Display="always" Required="true" Mask="false">5555</Config>
   <Config Name="MT5_LOGIN" Target="MT5_LOGIN" Default="" Mode="" Description="Your MT5 broker account number" Type="Variable" Display="always" Required="true" Mask="false"></Config>
   <Config Name="MT5_PASSWORD" Target="MT5_PASSWORD" Default="" Mode="" Description="Your MT5 broker account password" Type="Variable" Display="always" Required="true" Mask="true"></Config>
   <Config Name="MT5_SERVER" Target="MT5_SERVER" Default="" Mode="" Description="Your broker's MT5 server name, exactly as shown in MT5 (e.g. MetaQuotes-Demo)" Type="Variable" Display="always" Required="true" Mask="false"></Config>
@@ -33,5 +33,5 @@
   <Config Name="DISK_SIZE" Target="DISK_SIZE" Default="64G" Mode="" Description="Virtual disk size" Type="Variable" Display="advanced" Required="true" Mask="false">64G</Config>
   <Config Name="USERNAME" Target="USERNAME" Default="Docker" Mode="" Description="Windows account username (not your broker login)" Type="Variable" Display="advanced" Required="false" Mask="false">Docker</Config>
   <Config Name="PASSWORD" Target="PASSWORD" Default="admin" Mode="" Description="Windows account password (not your broker login) -- change this" Type="Variable" Display="advanced" Required="false" Mask="true">admin</Config>
-  <Config Name="Storage" Target="/storage" Default="/mnt/user/appdata/mt5-windows/storage" Mode="rw" Description="Persistent Windows VM disk image (keep this on cache/SSD if you can)" Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata/mt5-windows/storage</Config>
+  <Config Name="Storage" Target="/storage" Default="/mnt/user/appdata/pinebridge-mt5/storage" Mode="rw" Description="Persistent Windows VM disk image (keep this on cache/SSD if you can)" Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata/pinebridge-mt5/storage</Config>
 </Container>
