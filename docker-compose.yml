@@ -16,14 +16,17 @@ services:
     environment:
       - ZMQ_HOST=${ZMQ_HOST:-mt5-windows}
       - ZMQ_PORT=${ZMQ_PORT:-5555}
-      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      # Blank = generated on first start and saved in ./data/config.
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
       - REQUIRE_WEBHOOK_SECRET=${REQUIRE_WEBHOOK_SECRET:-true}
+      - PUBLIC_URL=${PUBLIC_URL:-}
     volumes:
       - ./data/logs:/logs
+      - ./data/config:/config
     ports:
       # Only needed for local testing / an alternative reverse proxy;
       # cloudflared reaches this service over the internal compose network.
-      - "5000:5000"
+      - "5080:5000"
 
   # dockur/windows plus this repo's provisioning files (see
   # mt5-windows/Dockerfile): boots a real Windows VM via KVM/QEMU and

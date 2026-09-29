@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY --chmod=755 entrypoint.sh /entrypoint.sh
 
-RUN mkdir -p /logs && chown -R bridge:bridge /app /logs
+RUN mkdir -p /logs /config && chown -R bridge:bridge /app /logs /config
 
 EXPOSE 5000
 

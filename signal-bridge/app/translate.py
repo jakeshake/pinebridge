@@ -32,6 +32,14 @@ ACTION_MAP = {
     "exit": "CLOSE",
 }
 
+# Seen live: an alert on another script (or a non-order condition) sends
+# its own text or the literal "{{strategy.order.alert_message}}".
+NOT_A_SIGNAL_HINT = (
+    "Alert has no signal= field. Only alerts on the strategy itself, with "
+    "Message {{strategy.order.alert_message}}, send bridge signals; alerts "
+    "from other scripts or non-order conditions send their own text."
+)
+
 VALID_ACTIONS = {
     "BUY", "SELL", "CLOSE", "CLOSELONG", "CLOSESHORT", "MODIFY",
     "ARM_LONG", "ARM_SHORT", "CANCEL_LONG", "CANCEL_SHORT",
@@ -150,6 +158,8 @@ def translate(parsed_data):
     signal type isn't recognized by any registered handler or the
     generic entry/exit map."""
     signal_type = str(parsed_data.get("signal", "")).lower()
+    if not signal_type:
+        raise ValueError(NOT_A_SIGNAL_HINT)
     symbol = str(parsed_data.get("symbol", "")).upper()
     pip_size = get_pip_size(symbol)
 
