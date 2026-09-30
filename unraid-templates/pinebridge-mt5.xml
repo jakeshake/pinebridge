@@ -7,7 +7,7 @@
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/jakeshake/pinebridge/issues</Support>
+  <Support>https://forums.unraid.net/topic/200736-support-jakeshake-pinebridge-tradingview-alerts-%E2%86%92-metatrader-5/</Support>
   <Project>https://github.com/jakeshake/pinebridge</Project>
   <Overview>Pinebridge: TradingView alerts to MetaTrader 5. Send TradingView alerts straight to MetaTrader 5 on your own Unraid server. No paid signal-relay service, no VPS. This container is the MetaTrader 5 side: it runs a full Windows 11 VM (dockur/windows, KVM/QEMU) that installs MetaTrader 5 and the TradingViewZeroMQExecutor EA by itself on first boot -- no files to download. First boot takes roughly 15-70 minutes (Windows download + install, then MT5 setup); watch it via the WebUI. Requires /dev/kvm on the host (enable virtualization in BIOS) and your own Windows license for anything beyond evaluation use.</Overview>
   <Category>Other:</Category>
@@ -18,8 +18,8 @@
   <PostArgs/>
   <CPUset/>
   <DateInstalled/>
-  <DonateText/>
-  <DonateLink/>
+  <DonateText>If Pinebridge saves you a VPS or signal subscription, consider buying me a coffee.</DonateText>
+  <DonateLink>https://buymeacoffee.com/jakeshake</DonateLink>
   <Requires>Virtualization (VT-x/AMD-V) enabled in BIOS so /dev/kvm exists. Test with a demo broker account first.</Requires>
   <Config Name="WebUI Port" Target="8006" Default="8006" Mode="tcp" Description="noVNC web viewer -- watch/control the Windows desktop in a browser" Type="Port" Display="always" Required="true" Mask="false">8006</Config>
   <Config Name="RDP Port" Target="3389" Default="3389" Mode="tcp" Description="Optional RDP access" Type="Port" Display="advanced" Required="false" Mask="false">3389</Config>
