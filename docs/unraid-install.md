@@ -1,5 +1,8 @@
 # Installing on Unraid
 
+Not on Unraid? See [docker-install.md](docker-install.md) for Docker
+Compose, Proxmox and running the EA on your own Windows machine.
+
 This repo ships Unraid container templates in `unraid-templates/` (plus the
 optional tunnel template in `extras/`), so you fill in a form instead of
 writing `docker run` commands. Nothing else needs downloading -- the images

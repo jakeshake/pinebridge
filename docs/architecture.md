@@ -14,7 +14,7 @@ pinebridge-bridge (Flask)
       |  - parses key=value alert body
       |  - translates to an EA message (BUY/SELL/CLOSE*/MODIFY)
       |
-      | ZeroMQ PUSH  (tcp://172.17.0.1:5555 on Unraid)
+      | ZeroMQ PUSH  (tcp://172.17.0.1:5555 on Unraid, pinebridge-mt5:5555 with compose)
       v
 pinebridge-mt5 (dockur/windows VM)
       |
