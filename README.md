@@ -64,7 +64,9 @@ You can watch and control it from a browser on port 8006.
 
 <p align="center"><img src="docs/screenshots/mt5.png" alt="MetaTrader 5 running inside the Windows VM, with the EA's log in the Experts tab" width="900"></p>
 
-**A TradingView strategy** sending its orders as Pinebridge alerts.
+**A TradingView strategy** whose orders become Pinebridge alerts. Each fill
+(here the `IML +1000` long entry, which the bridge turns into a 0.01-lot
+market order) fires an alert with the message Pinebridge executes.
 
 <p align="center"><img src="docs/screenshots/tradingview.png" alt="A TradingView strategy whose alerts drive Pinebridge" width="900"></p>
 
