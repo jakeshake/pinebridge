@@ -1,19 +1,21 @@
-services:
-  pinebridge-tunnel:
-    image: cloudflare/cloudflared:latest
-    container_name: pinebridge-tunnel
-    restart: unless-stopped
-    command: tunnel run
-    environment:
-      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
-    depends_on:
-      - pinebridge-bridge
+# Pinebridge for any Linux host running Docker Engine (bare metal, a Proxmox
+# VM or LXC, a NAS, ...). See docs/docker-install.md for the full guide.
+#
+#   cp .env.example .env      # fill in your MT5 login and a Windows password
+#   docker compose up -d                      # MT5 + bridge
+#   docker compose --profile tunnel up -d     # ... plus the Cloudflare Tunnel
+#
+# To build the images from this checkout instead of pulling them, uncomment
+# the `build:` lines.
 
+services:
   pinebridge-bridge:
-    build: ./signal-bridge
+    image: ghcr.io/jakeshake/pinebridge-bridge:latest
+    # build: ./signal-bridge
     container_name: pinebridge-bridge
     restart: unless-stopped
     environment:
+      - TZ=${TZ:-UTC}
       - ZMQ_HOST=${ZMQ_HOST:-pinebridge-mt5}
       - ZMQ_PORT=${ZMQ_PORT:-5555}
       # Blank = generated on first start and saved in ./data/config.
@@ -25,24 +27,25 @@ services:
       - ./data/logs:/logs
       - ./data/config:/config
     ports:
-      # Only needed for local testing / an alternative reverse proxy;
-      # cloudflared reaches this service over the internal compose network.
+      # Webhook. Point your tunnel / reverse proxy here (cloudflared in this
+      # file reaches it as http://pinebridge-bridge:5000 instead).
       - "5080:5000"
-      # Dashboard (LAN only -- never publish it through the tunnel) and the
-      # port the EA sends execution reports to.
+      # Dashboard: LAN only, never publish it through the tunnel.
       - "8081:8081"
+      # Execution reports from the EA inside the Windows VM.
       - "5556:5556"
 
-  # dockur/windows plus this repo's provisioning files (see
-  # mt5-windows/Dockerfile): boots a real Windows VM via KVM/QEMU and
-  # installs MT5 + the ZeroMQ EA on first boot. Requires /dev/kvm (Unraid
-  # has it once virtualization is enabled in BIOS) and a Windows license
-  # you're entitled to use -- see docs/mt5-ea-setup.md.
+  # dockur/windows plus this repo's provisioning files: boots a real Windows
+  # 11 VM with KVM/QEMU and installs MT5 + the Pinebridge EA on first boot.
+  # Needs /dev/kvm on the host and a Windows licence you're entitled to use.
   pinebridge-mt5:
-    build: ./mt5-windows
+    image: ghcr.io/jakeshake/pinebridge-mt5:latest
+    # build: ./mt5-windows
     container_name: pinebridge-mt5
+    restart: unless-stopped
+    stop_grace_period: 2m
     environment:
-      - VERSION=11
+      - TZ=${TZ:-UTC}
       - RAM_SIZE=${RAM_SIZE:-8G}
       - CPU_CORES=${CPU_CORES:-2}
       - DISK_SIZE=${DISK_SIZE:-64G}
@@ -58,10 +61,22 @@ services:
     cap_add:
       - NET_ADMIN
     ports:
-      - "8006:8006"      # noVNC web viewer -- watch/control the desktop in a browser
-      - "3389:3389/tcp"  # RDP, optional
-      - "5555:5555/tcp"  # ZeroMQ PULL socket -- pinebridge-bridge connects here
+      - "8006:8006"      # noVNC: watch/control the Windows desktop in a browser
+      - "3389:3389/tcp"  # RDP (optional)
+      - "5555:5555/tcp"  # ZeroMQ: the bridge sends signals to the EA here
     volumes:
       - ./data/windows:/storage
+
+  # Optional Cloudflare Tunnel for a public HTTPS webhook URL. Started only
+  # with `--profile tunnel`. In the Cloudflare dashboard, point the tunnel's
+  # public hostname at http://pinebridge-bridge:5000.
+  pinebridge-tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: pinebridge-tunnel
     restart: unless-stopped
-    stop_grace_period: 2m
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    depends_on:
+      - pinebridge-bridge

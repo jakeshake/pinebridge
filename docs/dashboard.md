@@ -3,6 +3,9 @@
 A web page served by pinebridge-bridge that shows what actually happened
 to your TradingView alerts:
 
+![The Pinebridge Dashboard after a night of live demo-account alerts](screenshots/dashboard.png)
+
+
 - **KPI tiles**: signals today and in total, market fill rate, win rate,
   net PnL, average slippage (vs TradingView and vs the broker's quote),
   average latency, equity, and the cost of execution.
