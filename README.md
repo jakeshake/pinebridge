@@ -53,6 +53,11 @@ one terminal command, then install the containers from **Docker > Add
 Container**. Coming from the old `tv-mt5-bridge` names? See
 [Moving from tv-mt5-bridge](docs/unraid-install.md#moving-from-tv-mt5-bridge-the-old-name).
 
+## Support
+
+Questions and help: the [Unraid forum support thread](https://forums.unraid.net/topic/200736-support-jakeshake-pinebridge-tradingview-alerts-%E2%86%92-metatrader-5/).
+Bugs and feature requests: [GitHub issues](https://github.com/jakeshake/pinebridge/issues).
+
 ## Security
 
 - The webhook requires a shared secret (`WEBHOOK_SECRET`), sent either in

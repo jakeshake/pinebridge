@@ -7,7 +7,7 @@
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/jakeshake/pinebridge/issues</Support>
+  <Support>https://forums.unraid.net/topic/200736-support-jakeshake-pinebridge-tradingview-alerts-%E2%86%92-metatrader-5/</Support>
   <Project>https://github.com/jakeshake/pinebridge</Project>
   <Overview>Pinebridge: TradingView alerts to MetaTrader 5. Send TradingView alerts straight to MetaTrader 5 on your own Unraid server. No paid signal-relay service, no VPS. This container receives the TradingView webhook alerts and passes them over ZeroMQ to the Expert Advisor in pinebridge-mt5. Needs pinebridge-mt5 running alongside it; the webhook secret is generated for you.</Overview>
   <Category>Other:</Category>

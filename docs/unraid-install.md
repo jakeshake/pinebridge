@@ -112,6 +112,10 @@ with 401 until a forced update. To stay on a known build, set
 
 ## Troubleshooting
 
+Stuck? Ask in the [Unraid forum support thread](https://forums.unraid.net/topic/200736-support-jakeshake-pinebridge-tradingview-alerts-%E2%86%92-metatrader-5/). Include the
+pinebridge-bridge log (with your webhook secret removed) and the MT5
+**Experts** tab.
+
 - **Every order fails with `10027 - auto trading disabled by client`**
   after switching MT5 accounts: the EA's own Allow Algo Trading / Allow DLL
   imports boxes reset. See [mt5-ea-setup.md](mt5-ea-setup.md).
