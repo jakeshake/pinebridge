@@ -18,8 +18,8 @@
   <PostArgs/>
   <CPUset/>
   <DateInstalled/>
-  <DonateText/>
-  <DonateLink/>
+  <DonateText>If Pinebridge saves you a VPS or signal subscription, consider buying me a coffee.</DonateText>
+  <DonateLink>https://buymeacoffee.com/jakeshake</DonateLink>
   <Requires>Install pinebridge-mt5 too. The defaults work as-is on Unraid's default bridge network. Leave WEBHOOK_SECRET blank to have one generated; your TradingView webhook URL is printed in this container's log on first start.</Requires>
   <Config Name="WebUI Port" Target="5000" Default="5080" Mode="tcp" Description="Host port for the webhook. Point your Cloudflare tunnel at http://[your Unraid IP]:[this port]." Type="Port" Display="always" Required="true" Mask="false">5080</Config>
   <Config Name="ZMQ_HOST" Target="ZMQ_HOST" Default="172.17.0.1" Mode="" Description="Where the EA's ZeroMQ port is reachable. 172.17.0.1 (the Docker host on the default bridge network) works when pinebridge-mt5 runs on this server; otherwise use that server's LAN IP." Type="Variable" Display="advanced" Required="false" Mask="false">172.17.0.1</Config>

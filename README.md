@@ -4,6 +4,8 @@
 
 **TradingView alerts to MetaTrader 5, self-hosted.**
 
+<a href="https://buymeacoffee.com/jakeshake"><img src="https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=&slug=jakeshake&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff" alt="Buy me a coffee" height="40"></a>
+
 Tired of paying a monthly fee just to get your TradingView alerts into
 MetaTrader 5? Or renting a VPS only so MT5 stays online around the clock?
 If you have an Unraid server, you already own the hardware for both.
@@ -91,6 +93,13 @@ Tested on real Unraid hardware with a Forex.com demo account:
 
 See [docs/mt5-ea-setup.md](docs/mt5-ea-setup.md) for what was found along
 the way. Issues and PRs welcome.
+
+## Support the project
+
+If Pinebridge saves you a VPS or a signal subscription, consider
+[buying me a coffee](https://buymeacoffee.com/jakeshake).
+
+<a href="https://buymeacoffee.com/jakeshake"><img src="https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=&slug=jakeshake&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff" alt="Buy me a coffee" height="40"></a>
 
 ## License
 

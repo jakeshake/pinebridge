@@ -18,8 +18,8 @@
   <PostArgs/>
   <CPUset/>
   <DateInstalled/>
-  <DonateText/>
-  <DonateLink/>
+  <DonateText>If Pinebridge saves you a VPS or signal subscription, consider buying me a coffee.</DonateText>
+  <DonateLink>https://buymeacoffee.com/jakeshake</DonateLink>
   <Requires>Virtualization (VT-x/AMD-V) enabled in BIOS so /dev/kvm exists. Test with a demo broker account first.</Requires>
   <Config Name="WebUI Port" Target="8006" Default="8006" Mode="tcp" Description="noVNC web viewer -- watch/control the Windows desktop in a browser" Type="Port" Display="always" Required="true" Mask="false">8006</Config>
   <Config Name="RDP Port" Target="3389" Default="3389" Mode="tcp" Description="Optional RDP access" Type="Port" Display="advanced" Required="false" Mask="false">3389</Config>
