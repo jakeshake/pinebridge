@@ -196,3 +196,41 @@ def test_webhook_assigns_signal_id_and_records_it(monkeypatch):
     assert len(sid) == 12
     rows = {s["signal_id"]: s for s in server.store.overview()["signals"]}
     assert rows[sid]["status"] == "sent" and rows[sid]["tv_price"] == 1.085
+
+
+# ---- v3.6: exit slippage ---------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "action,ref,fill,pips",
+    [
+        ("CLOSELONG", 1.08700, 1.08690, 1.0),    # closing a long is a sell: lower is adverse
+        ("CLOSELONG", 1.08700, 1.08705, -0.5),
+        ("CLOSESHORT", 1.08300, 1.08308, 0.8),   # closing a short is a buy: higher is adverse
+        ("CLOSESHORT", 1.08300, 1.08296, -0.4),
+    ],
+)
+def test_exit_slippage_sign(action, ref, fill, pips):
+    s = metrics.slippage(metrics.fill_side(action), ref, fill, 0.0001)
+    assert s["pips"] == pytest.approx(pips)
+
+
+def test_bare_close_is_not_measured():
+    assert metrics.fill_side("CLOSE") == 0
+
+
+def test_close_ack_shows_exit_fill_and_slippage(store):
+    store.record_signal("c1", {"signal": "closelong", "symbol": "EURUSD", "close_price": 1.08700},
+                        {"action": "CLOSELONG", "symbol": "EURUSD"})
+    store.mark_sent("c1", True)
+    reports.handle(store, json.dumps({
+        "type": "ack", "signal_id": "c1", "ok": True, "closed_tickets": [5001, 5002],
+        "fill_price": 1.08690, "requested_price": 1.08692, "volume": 0.3,
+        "tick_size": 0.00001, "tick_value": 1.0,
+    }))
+    row = store.overview()["signals"][0]
+    assert row["fill_price"] == 1.0869
+    assert row["slip_tv_pips"] == pytest.approx(1.0)
+    assert row["slip_tv_money"] == pytest.approx(3.0)       # 1 pip adverse on 0.3 lots
+    assert row["slip_broker_pips"] == pytest.approx(0.2)
+    # Exits don't enter the entry-slippage histogram or its average.
+    assert store.overview()["slippage"] == []

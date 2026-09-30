@@ -206,7 +206,7 @@ class Store:
         recent = []
         slips = []
         for s in sigs:
-            side = metrics.side_of(s["action"])
+            side = metrics.fill_side(s["action"])
             vs_tv = metrics.slippage(side, s["tv_price"], s["fill_price"], s["pip_size"],
                                      s["tick_size"], s["tick_value"], s["fill_volume"])
             vs_req = metrics.slippage(side, s["requested_price"], s["fill_price"], s["pip_size"],

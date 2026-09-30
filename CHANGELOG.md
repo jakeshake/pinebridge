@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased: dashboard follow-ups
+
+- **EA v3.6:** close acks report the exit fill (volume-weighted across the
+  closed legs) and the quote at send, so exits show fill price and slippage
+  (closing a long: lower is adverse). Recompile the EA, then remove it from
+  the chart and attach it again. Compiling alone doesn't reload an EA that's
+  already running.
+- **Equity chart:** the y-axis has a minimum span of 0.5% of equity,
+  centred on the data.
+
 ## Unreleased: Pinebridge Dashboard
 
 - **Dashboard** on the bridge's new LAN-only port 8081 (`DASHBOARD_PORT`,

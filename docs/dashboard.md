@@ -6,7 +6,9 @@ to your TradingView alerts:
 - **KPI tiles**: signals today and in total, market fill rate, win rate,
   net PnL, average slippage (vs TradingView and vs the broker's quote),
   average latency, equity, and the cost of execution.
-- **Equity curve**, from the EA's account heartbeat.
+- **Equity curve**, from the EA's account heartbeat. The y-axis always
+  spans at least 0.5% of equity, so a few cents of drift look flat instead of
+  filling the chart.
 - **Slippage distribution** of market entries against TradingView's price.
 - **Open positions** and **recent signals**. Each signal shows its status
   (sent, executed, failed, rejected, not delivered) and the EA's result or
@@ -73,6 +75,12 @@ the Docker host's LAN IP.
   [tradingview-alert-format.md](tradingview-alert-format.md).
 - **Broker slippage** = fill minus the price MT5 quoted when the EA sent the
   order. This is pure execution slippage.
+- **Exits** (`closelong`/`closeshort`, EA v3.6+) are measured the same way,
+  against the alert's `close_price` (or `tv_price`). The fill is the
+  volume-weighted close price of all the legs closed. Closing a long is a
+  sell, so filling lower is adverse; closing a short is a buy. Exit slippage
+  appears in the signals table. The histogram and the "Avg slippage" tiles
+  stay entries-only. A bare `close` (both directions) isn't measured.
 - **TV → bridge** needs `tv_time` in the alert. It includes TradingView's
   own alert delay, usually a second or more.
 - **Bridge → EA** is the round trip from pushing the signal until the EA

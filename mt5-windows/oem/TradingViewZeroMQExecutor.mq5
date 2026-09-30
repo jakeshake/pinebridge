@@ -23,6 +23,9 @@
 //|       back to the bridge (ReportAddress). Trading never waits on |
 //|       it: sends are non-blocking and dropped if the bridge is    |
 //|       unreachable.                                               |
+//| v3.6: Close acks report the exit fill (volume-weighted price of  |
+//|       the closed legs) and the quote at send, so the dashboard   |
+//|       shows exit slippage too.                                   |
 //|                                                                  |
 //| Receives signals INSTANTLY via ZeroMQ PULL socket from Flask.   |
 //| Latency: ~1-5ms from Flask to MT5                                |
@@ -33,9 +36,9 @@
 //|   3. Copy libzmq.dll & libsodium.dll to MQL5/Libraries/          |
 //|   4. Enable "Allow DLL imports" in MT5 Options                   |
 //+------------------------------------------------------------------+
-#property copyright "Pinebridge EA (TradingView ZeroMQ Executor) v3.5"
+#property copyright "Pinebridge EA (TradingView ZeroMQ Executor) v3.6"
 #property link      "https://github.com/ding9736/MQL5-ZeroMQ"
-#property version   "3.50"
+#property version   "3.60"
 #property strict
 
 // ZeroMQ library (ding9736 version)
@@ -120,7 +123,7 @@ datetime    g_disconnectedAt = 0;
 int OnInit()
 {
    Log("====================================================");
-   Log("Pinebridge EA (TradingView ZeroMQ Executor) v3.5 Starting...");
+   Log("Pinebridge EA (TradingView ZeroMQ Executor) v3.6 Starting...");
    Log("  Using: ding9736/MQL5-ZeroMQ library");
    Log("====================================================");
 
@@ -593,7 +596,7 @@ void SendHeartbeat(bool force)
               + "," + JBool("connected", (bool)TerminalInfoInteger(TERMINAL_CONNECTED))
               + "," + JBool("terminal_trade_allowed", (bool)TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
               + "," + JBool("ea_trade_allowed", (bool)MQLInfoInteger(MQL_TRADE_ALLOWED))
-              + "," + JStr("ea_version", "3.5")
+              + "," + JStr("ea_version", "3.6")
               + "," + JInt("pending_close_retries", ArraySize(g_retryTickets))
               + ",\"positions\":[" + positions + "]}");
 }
@@ -1048,15 +1051,35 @@ bool ClosePositions(string symbol, int positionType)
    // symbol while an older one is open (10045), e.g. the double-down leg.
    ulong tickets[];
    int n = CollectPositionsFifo(symbol, positionType, tickets);
+   double quoteSum = 0, fillSum = 0, volSum = 0;   // [v3.6] volume-weighted, for the ack
 
    for(int i = 0; i < n; i++)
    {
       ulong ticket = tickets[i];
+      // Quote this leg will close against: bid for a long, ask for a short.
+      double quote = 0, vol = 0;
+      if(PositionSelectByTicket(ticket))
+      {
+         string posSym = PositionGetString(POSITION_SYMBOL);
+         bool isLong = PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY;
+         quote = SymbolInfoDouble(posSym, isLong ? SYMBOL_BID : SYMBOL_ASK);
+         vol = PositionGetDouble(POSITION_VOLUME);
+      }
       if(trade.PositionClose(ticket))
       {
          Log("OK: Closed ticket " + IntegerToString((int)ticket));
          closedCount++;
          g_ackClosed += (g_ackClosed == "" ? "" : ",") + IntegerToString((long)ticket);
+         double fill = trade.ResultPrice();
+         if(fill <= 0 && trade.ResultDeal() > 0 && HistoryDealSelect(trade.ResultDeal()))
+            fill = HistoryDealGetDouble(trade.ResultDeal(), DEAL_PRICE);
+         if(fill > 0 && vol > 0)
+         {
+            fillSum += fill * vol;
+            quoteSum += quote * vol;
+            volSum += vol;
+         }
+         g_ackRetcode = trade.ResultRetcode();
       }
       else
       {
@@ -1065,6 +1088,13 @@ bool ClosePositions(string symbol, int positionType)
          failedCount++;
          QueueCloseRetry(ticket);
       }
+   }
+
+   if(volSum > 0)
+   {
+      g_ackFillPrice = fillSum / volSum;
+      g_ackReqPrice = quoteSum / volSum;
+      g_ackVolume = volSum;
    }
 
    Log("Close summary - Closed: " + IntegerToString(closedCount) + ", Failed: " + IntegerToString(failedCount));
