@@ -8,11 +8,14 @@ import hmac
 import logging
 import os
 import sys
+import time
+import uuid
 from logging.handlers import TimedRotatingFileHandler
 
 from flask import Flask, jsonify, request
 
-from . import config, translate, zmq_client
+from . import config, reports, translate, zmq_client
+from .store import Store
 from .parser import parse_alert
 
 
@@ -57,6 +60,30 @@ if problems:
     logger.error("Refusing to start with invalid configuration. See errors above.")
     sys.exit(1)
 
+def _open_store():
+    try:
+        os.makedirs(config.DATA_DIR, exist_ok=True)
+        store = Store(config.DB_PATH)
+        store.prune(config.RETENTION_DAYS)
+        return store
+    except Exception as exc:
+        logger.warning(f"Dashboard storage disabled ({config.DB_PATH}: {exc}); trading is unaffected")
+        return None
+
+
+store = _open_store()
+
+
+def _store_call(method, *args, **kwargs):
+    """Storage is for the dashboard only: never let it break a trade."""
+    if store is None:
+        return
+    try:
+        getattr(store, method)(*args, **kwargs)
+    except Exception:
+        logger.exception(f"Dashboard storage error in {method}")
+
+
 app = Flask(__name__)
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
@@ -92,11 +119,24 @@ def _secret_ok(parsed_data):
 
 @app.route("/health", methods=["GET"])
 def health_check():
+    # Public (reachable through the tunnel): booleans and ages only, never
+    # account data -- that lives on the LAN-only dashboard port.
+    ea = None
+    if store is not None:
+        try:
+            ea = store.ea_status()
+        except Exception:
+            ea = None
+    last = reports.last_report_at
     return jsonify(
         {
             "status": "healthy",
             "zmq_address": zmq_client.ADDRESS,
             "zmq_connected": zmq_client.is_connected(),
+            "ea_last_report_seconds_ago": round(time.time() - last, 1) if last else None,
+            "broker_connected": ea.get("connected") if ea else None,
+            "algo_trading_allowed": (ea.get("terminal_trade_allowed") and ea.get("ea_trade_allowed"))
+            if ea else None,
         }
     )
 
@@ -123,16 +163,21 @@ def webhook():
         logger.warning("Rejected webhook: missing or invalid secret")
         return jsonify({"status": "error", "message": "Invalid or missing secret"}), 401
 
+    signal_id = uuid.uuid4().hex[:12]
     try:
         ea_signal = translate.translate(parsed_data)
     except ValueError as exc:
         logger.error(f"Translate error: {exc}")
+        _store_call("record_signal", signal_id, _without_secret(parsed_data), None, "rejected", str(exc))
         return jsonify({"status": "error", "message": str(exc)}), 400
+    ea_signal["signal_id"] = signal_id
 
     logger.info(f"Signal: {translate.describe(ea_signal)}")
 
     if ea_signal["action"] not in translate.VALID_ACTIONS:
         logger.error(f"Invalid action: {ea_signal['action']}")
+        _store_call("record_signal", signal_id, _without_secret(parsed_data), ea_signal, "rejected",
+                    f"Invalid action: {ea_signal['action']}")
         return (
             jsonify(
                 {
@@ -144,8 +189,10 @@ def webhook():
             400,
         )
 
+    _store_call("record_signal", signal_id, _without_secret(parsed_data), ea_signal)
     success, latency = zmq_client.send(ea_signal)
-    logger.info(f"{'OK' if success else 'BUFFERED'} - ZMQ latency: {latency:.3f}ms")
+    _store_call("mark_sent", signal_id, success)
+    logger.info(f"{'OK' if success else 'BUFFERED'} - ZMQ latency: {latency:.3f}ms (signal {signal_id})")
     logger.info("=" * 60)
 
     return jsonify(
@@ -235,6 +282,33 @@ def _log_tradingview_setup():
     logger.info('  Condition:   your strategy, "Order fills and alert() function calls"')
 
 
+def _start_dashboard():
+    """The dashboard is optional: if its ports are busy, log it and keep the
+    webhook running rather than taking trading down with it."""
+    if store is None:
+        return
+    if config.REPORT_PORT:
+        reports.start(store, config.REPORT_PORT)
+    if config.DASHBOARD_PORT:
+        import threading
+
+        from werkzeug.serving import make_server
+
+        from .dashboard import create_app
+
+        try:
+            server = make_server(config.FLASK_HOST, config.DASHBOARD_PORT, create_app(store), threaded=True)
+        except (OSError, SystemExit) as exc:  # werkzeug sys.exit()s on a busy port
+            logger.error(f"Dashboard disabled: can't listen on port {config.DASHBOARD_PORT} ({exc!r}); "
+                         "the webhook keeps working")
+            return
+        threading.Thread(target=server.serve_forever, name="dashboard", daemon=True).start()
+        logger.info(
+            f"Dashboard: http://<this-server>:{config.DASHBOARD_PORT}/ (LAN only -- "
+            f"{'password protected' if config.DASHBOARD_PASSWORD else 'no password set'})"
+        )
+
+
 def main():
     logger.info("=" * 60)
     logger.info("Pinebridge bridge: TradingView alerts -> MT5")
@@ -242,6 +316,7 @@ def main():
     logger.info(f"ZeroMQ: {zmq_client.ADDRESS} (PUSH -> MT5 PULL)")
     logger.info(f"Webhook secret required: {config.REQUIRE_SECRET}")
     _log_tradingview_setup()
+    _start_dashboard()
     logger.info("=" * 60)
     app.run(host=config.FLASK_HOST, port=config.FLASK_PORT, threaded=True, debug=False)
 

@@ -32,6 +32,10 @@ Three containers:
 | `pinebridge-bridge` | Flask app: authenticates, parses, and translates TradingView alerts, then pushes them to MT5 over ZeroMQ |
 | `pinebridge-mt5` | A Windows 11 VM ([dockur/windows](https://github.com/dockur/windows)) running MetaTrader 5 + the `TradingViewZeroMQExecutor` Expert Advisor |
 
+The **Pinebridge Dashboard** (port 8081, LAN only) shows every signal and
+fill, slippage against TradingView's price, latency, win rate, PnL and
+equity. See [docs/dashboard.md](docs/dashboard.md).
+
 See [docs/architecture.md](docs/architecture.md) for the full data-flow
 diagram and the reasoning behind each piece.
 

@@ -39,6 +39,15 @@ REQUIRE_SECRET = _env_bool("REQUIRE_WEBHOOK_SECRET", True)
 CONFIG_DIR = os.environ.get("CONFIG_DIR", "/config")
 SECRET_FILE = os.path.join(CONFIG_DIR, "webhook_secret")
 
+# Dashboard (LAN only -- never route this port through the tunnel). The EA
+# pushes execution reports to REPORT_PORT; 0 disables either.
+DASHBOARD_PORT = int(os.environ.get("DASHBOARD_PORT", "8081"))
+DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "")
+REPORT_PORT = int(os.environ.get("REPORT_PORT", "5556"))
+DATA_DIR = os.environ.get("DATA_DIR", CONFIG_DIR)
+DB_PATH = os.path.join(DATA_DIR, "pinebridge.db")
+RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", "90"))
+
 # Optional public base URL (e.g. https://tv-webhook.example.com), only used
 # to print the exact TradingView webhook URL at startup.
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "").rstrip("/")

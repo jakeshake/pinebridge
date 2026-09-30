@@ -20,6 +20,7 @@ services:
       - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
       - REQUIRE_WEBHOOK_SECRET=${REQUIRE_WEBHOOK_SECRET:-true}
       - PUBLIC_URL=${PUBLIC_URL:-}
+      - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD:-}
     volumes:
       - ./data/logs:/logs
       - ./data/config:/config
@@ -27,6 +28,10 @@ services:
       # Only needed for local testing / an alternative reverse proxy;
       # cloudflared reaches this service over the internal compose network.
       - "5080:5000"
+      # Dashboard (LAN only -- never publish it through the tunnel) and the
+      # port the EA sends execution reports to.
+      - "8081:8081"
+      - "5556:5556"
 
   # dockur/windows plus this repo's provisioning files (see
   # mt5-windows/Dockerfile): boots a real Windows VM via KVM/QEMU and
