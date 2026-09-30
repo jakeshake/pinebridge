@@ -1,21 +1,24 @@
 # Installing on Unraid
 
-This repo ships Unraid container templates in `unraid-templates/`, so you
-fill in a form instead of writing `docker run` commands. Nothing else needs
-downloading -- the images carry all the provisioning files.
+This repo ships Unraid container templates in `unraid-templates/` (plus the
+optional tunnel template in `extras/`), so you fill in a form instead of
+writing `docker run` commands. Nothing else needs downloading -- the images
+carry all the provisioning files.
 
 ## 1. Add the templates
 
 **From the Apps tab (once Pinebridge is listed in Community Applications):**
-open **Apps**, search for **Pinebridge**, and install `pinebridge-mt5`,
-`pinebridge-bridge` and, if you need a tunnel, `pinebridge-tunnel`. Each one
-opens the same form described in step 2, so skip to step 2.
+open **Apps**, search for **Pinebridge**, and install `pinebridge-mt5` and
+`pinebridge-bridge`. Each one opens the same form described in step 2, so
+skip to step 2. For the tunnel, use one you already run, or install any
+cloudflared app from the Apps tab (search **cloudflared**) with your tunnel
+token -- see [cloudflare-tunnel-setup.md](cloudflare-tunnel-setup.md).
 
 **Or add them by hand** (before the listing is live, or if you prefer): open
 a terminal on Unraid (the `>_` icon, top right) and run:
 
 ```bash
-cd /boot/config/plugins/dockerMan/templates-user && for t in mt5 bridge tunnel; do wget -qO "my-pinebridge_$t.xml" "https://raw.githubusercontent.com/jakeshake/pinebridge/main/unraid-templates/pinebridge-$t.xml"; done
+cd /boot/config/plugins/dockerMan/templates-user && for t in mt5 bridge; do wget -qO "my-pinebridge_$t.xml" "https://raw.githubusercontent.com/jakeshake/pinebridge/main/unraid-templates/pinebridge-$t.xml"; done && wget -qO "my-pinebridge_tunnel.xml" "https://raw.githubusercontent.com/jakeshake/pinebridge/main/extras/pinebridge-tunnel.xml"
 ```
 
 Safe to re-run to pick up template updates. (Unraid saves each container's

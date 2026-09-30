@@ -7,13 +7,13 @@ Tired of paying a monthly fee just to get your TradingView alerts into MetaTrade
 **Three containers**
 - **pinebridge-mt5**: a Windows 11 VM that installs MetaTrader 5 and the Pinebridge Expert Advisor by itself. Needs virtualization (KVM) and a Windows licence you're entitled to use.
 - **pinebridge-bridge**: receives TradingView webhooks and sends them to the EA over ZeroMQ. It also serves the LAN-only **Pinebridge Dashboard**: signals, fills, slippage, latency, win rate, PnL and equity.
-- **pinebridge-tunnel** (optional): a Cloudflare Tunnel for a public HTTPS webhook URL. Skip it if you already run a tunnel.
+- **A public HTTPS webhook URL**: TradingView needs one. Point a Cloudflare Tunnel you already run at the bridge, or install any cloudflared app from the Apps tab; the setup guide covers both.
 
 Supports market entries and exits, resting limit orders, double-down adds, SL/TP modify, close retries after broker disconnects, and FIFO-compliant closing for US accounts.
 
 **Risk notice:** Pinebridge places real trades automatically, with no human confirmation. Read the [risk notice](https://github.com/jakeshake/pinebridge/blob/main/DISCLAIMER.md) and **test on a demo account first**.
 
-Setup guide: https://github.com/jakeshake/pinebridge/blob/main/docs/unraid-install.md</Profile>
+[Setup guide](https://github.com/jakeshake/pinebridge/blob/main/docs/unraid-install.md)</Profile>
   <Icon>https://raw.githubusercontent.com/jakeshake/pinebridge/main/docs/icons/pinebridge.png</Icon>
   <WebPage>https://github.com/jakeshake/pinebridge</WebPage>
   <Forum>https://forums.unraid.net/topic/200736-support-jakeshake-pinebridge-tradingview-alerts-%E2%86%92-metatrader-5/</Forum>
