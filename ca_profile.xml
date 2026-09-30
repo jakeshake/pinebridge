@@ -4,7 +4,7 @@
 
 Tired of paying a monthly fee just to get your TradingView alerts into MetaTrader 5? Or renting a VPS only so MT5 stays online around the clock? If you have an Unraid server, you already own the hardware for both. Pinebridge receives your TradingView strategy alerts and places the trades in MT5, which runs in a Windows container on your own server. No signal-relay subscription, no VPS bill, and your broker login stays on your own server instead of with a third-party service.
 
-**Three containers**
+**What you install**
 - **pinebridge-mt5**: a Windows 11 VM that installs MetaTrader 5 and the Pinebridge Expert Advisor by itself. Needs virtualization (KVM) and a Windows licence you're entitled to use.
 - **pinebridge-bridge**: receives TradingView webhooks and sends them to the EA over ZeroMQ. It also serves the LAN-only **Pinebridge Dashboard**: signals, fills, slippage, latency, win rate, PnL and equity.
 - **A public HTTPS webhook URL**: TradingView needs one. Point a Cloudflare Tunnel you already run at the bridge, or install any cloudflared app from the Apps tab; the setup guide covers both.
