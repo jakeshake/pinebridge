@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<CommunityApplications>
+  <Profile>**Pinebridge: TradingView alerts to MetaTrader 5, on your own Unraid server.**
+
+Tired of paying a monthly fee just to get your TradingView alerts into MetaTrader 5? Or renting a VPS only so MT5 stays online around the clock? If you have an Unraid server, you already own the hardware for both. Pinebridge receives your TradingView strategy alerts and places the trades in MT5, which runs in a Windows container on your own server. No signal-relay subscription, no VPS bill, and your broker login stays on your own server instead of with a third-party service.
+
+**Three containers**
+- **pinebridge-mt5**: a Windows 11 VM that installs MetaTrader 5 and the Pinebridge Expert Advisor by itself. Needs virtualization (KVM) and a Windows licence you're entitled to use.
+- **pinebridge-bridge**: receives TradingView webhooks and sends them to the EA over ZeroMQ. It also serves the LAN-only **Pinebridge Dashboard**: signals, fills, slippage, latency, win rate, PnL and equity.
+- **pinebridge-tunnel** (optional): a Cloudflare Tunnel for a public HTTPS webhook URL. Skip it if you already run a tunnel.
+
+Supports market entries and exits, resting limit orders, double-down adds, SL/TP modify, close retries after broker disconnects, and FIFO-compliant closing for US accounts.
+
+**Risk notice:** Pinebridge places real trades automatically, with no human confirmation. Read the [risk notice](https://github.com/jakeshake/pinebridge/blob/main/DISCLAIMER.md) and **test on a demo account first**.
+
+Setup guide: https://github.com/jakeshake/pinebridge/blob/main/docs/unraid-install.md</Profile>
+  <Icon>https://raw.githubusercontent.com/jakeshake/pinebridge/main/docs/icons/pinebridge.png</Icon>
+  <WebPage>https://github.com/jakeshake/pinebridge</WebPage>
+  <Forum>https://forums.unraid.net/topic/200736-support-jakeshake-pinebridge-tradingview-alerts-%E2%86%92-metatrader-5/</Forum>
+  <DonateLink>https://buymeacoffee.com/jakeshake</DonateLink>
+  <DonateText>If Pinebridge saves you a VPS or signal subscription, consider buying me a coffee.</DonateText>
+  <Photo>https://raw.githubusercontent.com/jakeshake/pinebridge/main/docs/screenshots/dashboard.png</Photo>
+</CommunityApplications>
