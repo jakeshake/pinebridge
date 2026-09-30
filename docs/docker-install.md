@@ -96,7 +96,7 @@ docker compose pull && docker compose up -d
 
 The Windows VM and MT5 keep their state in `./data/windows`. A new EA
 version inside the image only reaches an already-installed VM if you copy
-and recompile it, see [mt5-ea-setup.md](mt5-ea-setup.md).
+and recompile it, see [Updating the EA](mt5-ea-setup.md#updating-the-ea).
 
 ### If the dashboard says "EA silent"
 

@@ -158,7 +158,7 @@ docker compose up -d       # add --profile tunnel for the Cloudflare Tunnel
   close a position before reversing it.
 - **EA updates** in a new image don't reach an already-installed VM on
   their own. Copy the new EA in, recompile it, and re-attach it on the
-  chart: see [mt5-ea-setup.md](docs/mt5-ea-setup.md).
+  chart: see [Updating the EA](docs/mt5-ea-setup.md#updating-the-ea).
 - **Slippage vs TradingView** compares the MT5 fill with TradingView's
   price, which comes from TradingView's data feed, so it includes the
   difference between the two feeds as well as real slippage.
