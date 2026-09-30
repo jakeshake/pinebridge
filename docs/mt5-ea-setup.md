@@ -189,6 +189,33 @@ inside the VM (via the noVNC viewer or RDP on port 3389):
    `MQL5/Presets/TradingViewZeroMQExecutor.set` in the Inputs tab.
 4. Confirm "Algo Trading" is toggled on in the toolbar.
 
+## Updating the EA
+
+A new EA version in the `pinebridge-mt5` image only reaches a fresh
+install. On a VM that's already set up, update it by hand (via RDP on port
+3389 or the noVNC viewer on 8006; noVNC's side panel has a clipboard for
+pasting text into the VM):
+
+1. Open **PowerShell** in the VM and download the new EA over the old one,
+   keeping a backup:
+   ```powershell
+   cd "C:\Program Files\MetaTrader 5\MQL5\Experts"
+   Copy-Item TradingViewZeroMQExecutor.mq5 TradingViewZeroMQExecutor.mq5.bak
+   Invoke-WebRequest https://raw.githubusercontent.com/jakeshake/pinebridge/main/mt5-windows/oem/TradingViewZeroMQExecutor.mq5 -OutFile TradingViewZeroMQExecutor.mq5
+   ```
+2. Compile it: open the file in MetaEditor and press **F7**, or run
+   `& "C:\Program Files\MetaTrader 5\metaeditor64.exe" /compile:"$PWD\TradingViewZeroMQExecutor.mq5" /portable /log`.
+   It must report **0 errors**.
+3. **Re-attach it.** Compiling doesn't reload the EA that's already running
+   on the chart. In MT5's **Navigator**, right-click
+   `TradingViewZeroMQExecutor` > **Attach to Chart**, and answer **Yes** to
+   replace the running copy. On the **Dependencies** tab tick **Allow DLL
+   imports** (it resets on re-attach), check **Allow Algo Trading** on the
+   Common tab, and click **OK**. Your inputs carry over.
+4. The **Experts** tab should show `Pinebridge EA ... vX.Y Starting...`
+   with the new version, and the dashboard's header shows the same version
+   within about 30 seconds.
+
 ## Networking
 
 pinebridge-bridge connects to `ZMQ_HOST:ZMQ_PORT` (default `pinebridge-mt5:5555`).
