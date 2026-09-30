@@ -25,7 +25,7 @@ instead of with a third-party service.
 ## How it works
 
 ```mermaid
-flowchart LR
+flowchart TD
     TV["TradingView<br/>strategy alert"] -- "HTTPS webhook" --> CF["Cloudflare Tunnel<br/>(or your reverse proxy)"]
     CF --> BR["pinebridge-bridge<br/>checks the secret,<br/>translates the alert"]
     BR -- "ZeroMQ" --> EA["pinebridge-mt5<br/>Windows VM · MT5 · Pinebridge EA"]
@@ -70,7 +70,7 @@ You can watch and control it from a browser on port 8006.
 
 ## What you need
 
-| | |
+| You need | Details |
 |---|---|
 | **TradingView** | A paid plan that includes webhook alerts, with two-factor authentication turned on (TradingView requires it for webhooks). |
 | **A Pine strategy** | One that builds its alert messages in the [Pinebridge alert format](docs/tradingview-alert-format.md). An indicator or someone else's script that sends other text won't work as-is. |
