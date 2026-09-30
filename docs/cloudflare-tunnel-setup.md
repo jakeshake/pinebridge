@@ -8,8 +8,10 @@ Pick one route:
   serving other apps): add a public hostname to that tunnel with service
   `http://<unraid-ip>:5080` (pinebridge-bridge's WebUI Port). There's nothing
   to install. Skip to step 5 below.
-- **B. No tunnel yet (recommended)**: create one below and install the
-  `pinebridge-tunnel` template with its token.
+- **B. No tunnel yet (recommended)**: create one below, then run it with its
+  token in either the `pinebridge-tunnel` template (added by the one-liner
+  in [unraid-install.md](unraid-install.md); it lives in `extras/`) or any
+  cloudflared app from Community Applications.
 - **C. Just trying it out**: a quick tunnel needs no account or domain:
   ```
   docker run -d --name pinebridge-quick-tunnel cloudflare/cloudflared:latest tunnel --no-autoupdate --url http://<unraid-ip>:5080

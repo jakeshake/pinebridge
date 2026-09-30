@@ -16,7 +16,7 @@
   <ExtraSearchTerms>cloudflare tunnel cloudflared tradingview webhook pinebridge</ExtraSearchTerms>
   <Category>Network:Other</Category>
   <WebUI/>
-  <TemplateURL>https://raw.githubusercontent.com/jakeshake/pinebridge/main/unraid-templates/pinebridge-tunnel.xml</TemplateURL>
+  <TemplateURL>https://raw.githubusercontent.com/jakeshake/pinebridge/main/extras/pinebridge-tunnel.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/jakeshake/pinebridge/main/docs/icons/pinebridge-tunnel.png</Icon>
   <ExtraParams/>
   <PostArgs>tunnel run</PostArgs>

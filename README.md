@@ -81,7 +81,8 @@ Bugs and feature requests: [GitHub issues](https://github.com/jakeshake/pinebrid
 - `signal-bridge/` — source of the `pinebridge-bridge` image (Flask + ZeroMQ webhook receiver)
 - `mt5-windows/` — source of the `pinebridge-mt5` image, built on dockur/windows; `oem/` holds the
   provisioning scripts + EA source baked into it
-- `unraid-templates/` — Unraid container templates
+- `unraid-templates/` — Unraid container templates (the ones listed in Community Applications)
+- `extras/` — the optional `pinebridge-tunnel` template, kept out of the CA listing because CA already lists cloudflared
 - `docs/` — setup guides for each piece
 
 ## Status
