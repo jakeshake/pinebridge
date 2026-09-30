@@ -10,7 +10,7 @@ Pick one route:
   to install. Skip to step 5 below.
 - **B. No tunnel yet (recommended)**: create one below, then run it with its
   token in either the `pinebridge-tunnel` template (added by the one-liner
-  in [unraid-install.md](unraid-install.md); it lives in `extras/`) or any
+  in [unraid-install.md](unraid-install.md); it lives in `extras/pinebridge-tunnel.template`) or any
   cloudflared app from Community Applications.
 - **C. Just trying it out**: a quick tunnel needs no account or domain:
   ```
