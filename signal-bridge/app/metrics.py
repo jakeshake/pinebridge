@@ -18,6 +18,17 @@ def side_of(action):
     return 0
 
 
+def fill_side(action):
+    """Direction of the fill an action produces, for slippage: +1 buys, -1
+    sells. Closing a long is a sell (filling lower is adverse); closing a
+    short is a buy. A bare CLOSE can be either, so it isn't measured."""
+    if action == "CLOSELONG":
+        return -1
+    if action == "CLOSESHORT":
+        return 1
+    return side_of(action)
+
+
 def price_to_money(price_diff, tick_size, tick_value, volume):
     """Convert a price distance into account currency using the broker's
     tick size/value for the symbol (as reported by the EA)."""
