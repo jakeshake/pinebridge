@@ -18,7 +18,7 @@ token -- see [cloudflare-tunnel-setup.md](cloudflare-tunnel-setup.md).
 a terminal on Unraid (the `>_` icon, top right) and run:
 
 ```bash
-cd /boot/config/plugins/dockerMan/templates-user && for t in mt5 bridge; do wget -qO "my-pinebridge_$t.xml" "https://raw.githubusercontent.com/jakeshake/pinebridge/main/unraid-templates/pinebridge-$t.xml"; done && wget -qO "my-pinebridge_tunnel.xml" "https://raw.githubusercontent.com/jakeshake/pinebridge/main/extras/pinebridge-tunnel.xml"
+cd /boot/config/plugins/dockerMan/templates-user && for t in mt5 bridge; do wget -qO "my-pinebridge_$t.xml" "https://raw.githubusercontent.com/jakeshake/pinebridge/main/unraid-templates/pinebridge-$t.xml"; done && wget -qO "my-pinebridge_tunnel.xml" "https://raw.githubusercontent.com/jakeshake/pinebridge/main/extras/pinebridge-tunnel.template"
 ```
 
 Safe to re-run to pick up template updates. (Unraid saves each container's
