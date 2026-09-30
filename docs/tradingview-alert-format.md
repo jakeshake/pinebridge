@@ -91,6 +91,30 @@ The `symbol` field is TradingView's ticker (`syminfo.ticker`, e.g.
 symbol mapping yet, so brokers that add a suffix (`EURUSD.a`, `EURUSDm`)
 won't work with it as-is.
 
+## Optional: price and time for the dashboard
+
+Two optional fields feed the [dashboard](dashboard.md)'s slippage and
+latency numbers. The bridge ignores them for trading.
+
+| Field | Meaning |
+|---|---|
+| `tv_price` | TradingView's price for the signal. Without it the bridge uses the alert's own `entry_price` / `limit_price` / `close_price`. |
+| `tv_time` | When TradingView fired the alert: `{{timenow}}` (ISO time), or epoch seconds/ms. Needed for the TV → bridge latency. |
+
+For a strategy alert, append them in the Message box:
+
+```
+{{strategy.order.alert_message}},tv_price={{strategy.order.price}},tv_time={{timenow}}
+```
+
+This only reaches order-fill messages. `alert()` messages (arm, cancel,
+modify) are sent exactly as the script built them, so they have no
+`tv_time`, and their latency shows as "–".
+
+TradingView's price comes from TradingView's data feed, not your broker's
+quotes. Slippage measured against it therefore includes the difference
+between the two feeds as well as real execution slippage.
+
 ## Testing without TradingView
 
 ```bash

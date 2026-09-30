@@ -20,3 +20,6 @@ LimitOrderExpiryMin=0
 CloseRetrySec=10
 CloseRetryMaxMin=1440
 NotifyConnection=true
+EnableReports=true
+ReportAddress=tcp://172.17.0.1:5556
+HeartbeatSec=30

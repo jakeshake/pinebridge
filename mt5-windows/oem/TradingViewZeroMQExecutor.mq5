@@ -16,6 +16,13 @@
 //|       10046 (hedge prohibited) gets a readable explanation.      |
 //|       Closes run oldest-first (FIFO accounts reject anything else |
 //|       with 10045); MODIFY updates every position on the symbol.  |
+//| v3.5: Execution reports for the Pinebridge Dashboard: a second   |
+//|       ZeroMQ socket PUSHes an ack per signal (echoing signal_id, |
+//|       with requested/fill price and retcode), every deal on this |
+//|       magic (incl. broker SL/TP closes) and an account heartbeat |
+//|       back to the bridge (ReportAddress). Trading never waits on |
+//|       it: sends are non-blocking and dropped if the bridge is    |
+//|       unreachable.                                               |
 //|                                                                  |
 //| Receives signals INSTANTLY via ZeroMQ PULL socket from Flask.   |
 //| Latency: ~1-5ms from Flask to MT5                                |
@@ -26,9 +33,9 @@
 //|   3. Copy libzmq.dll & libsodium.dll to MQL5/Libraries/          |
 //|   4. Enable "Allow DLL imports" in MT5 Options                   |
 //+------------------------------------------------------------------+
-#property copyright "Pinebridge EA (TradingView ZeroMQ Executor) v3.4"
+#property copyright "Pinebridge EA (TradingView ZeroMQ Executor) v3.5"
 #property link      "https://github.com/ding9736/MQL5-ZeroMQ"
-#property version   "3.40"
+#property version   "3.50"
 #property strict
 
 // ZeroMQ library (ding9736 version)
@@ -64,6 +71,11 @@ input int      CloseRetrySec       = 10;          // Retry a failed close every 
 input int      CloseRetryMaxMin    = 1440;        // Give up retrying a failed close after N minutes (0 = never)
 input bool     NotifyConnection    = true;        // Push notification on broker disconnect/reconnect (needs MetaQuotes ID set in Options > Notifications)
 
+//--- Execution reports for the Pinebridge Dashboard (v3.5) ---
+input bool     EnableReports       = true;        // Push execution reports + heartbeat to the bridge
+input string   ReportAddress       = "tcp://172.17.0.1:5556"; // Bridge report port (Docker host from this server; else the bridge's LAN IP)
+input int      HeartbeatSec        = 30;          // Account heartbeat interval (seconds)
+
 //+------------------------------------------------------------------+
 //| Global Variables                                                  |
 //+------------------------------------------------------------------+
@@ -88,6 +100,18 @@ datetime    g_retryQueuedAt[];
 uint        g_lastRetryTick = 0;
 int         g_closesRetried = 0;
 bool        g_wasConnected = true;
+
+// [v3.5] Execution reports. g_ack* collect the outcome of the signal being
+// processed; ProcessSignal() resets them and SendAck() reports them.
+ZmqSocket  *g_reportSocket = NULL;
+uint        g_lastHeartbeatTick = 0;
+string      g_lastLog = "";
+ulong       g_ackOrder = 0;
+double      g_ackReqPrice = 0;
+double      g_ackFillPrice = 0;
+double      g_ackVolume = 0;
+uint        g_ackRetcode = 0;
+string      g_ackClosed = "";
 datetime    g_disconnectedAt = 0;
 
 //+------------------------------------------------------------------+
@@ -96,7 +120,7 @@ datetime    g_disconnectedAt = 0;
 int OnInit()
 {
    Log("====================================================");
-   Log("Pinebridge EA (TradingView ZeroMQ Executor) v3.4 Starting...");
+   Log("Pinebridge EA (TradingView ZeroMQ Executor) v3.5 Starting...");
    Log("  Using: ding9736/MQL5-ZeroMQ library");
    Log("====================================================");
 
@@ -116,6 +140,8 @@ int OnInit()
       Log("  3. ZeroMQ folder is in MQL5/Include/");
       return INIT_FAILED;
    }
+
+   InitReports();
 
    // Set timer for checking messages (as fast as possible)
    EventSetMillisecondTimer(TimerIntervalMs);
@@ -263,6 +289,13 @@ void OnDeinit(const int reason)
       Log("WARNING: " + IntegerToString(ArraySize(g_retryTickets)) + " failed close(s) still pending - check open positions manually");
 
    // Clean up ZeroMQ
+   if(g_reportSocket != NULL)
+   {
+      g_reportSocket.disconnect(ReportAddress);
+      delete g_reportSocket;
+      g_reportSocket = NULL;
+   }
+
    if(g_pullSocket != NULL)
    {
       g_pullSocket.unbind(ZmqBindAddress);
@@ -294,6 +327,7 @@ void OnTimer()
 
    MonitorConnection();
    RetryFailedCloses();
+   SendHeartbeat(false);
 }
 
 //+------------------------------------------------------------------+
@@ -323,6 +357,7 @@ void MonitorConnection()
    Print("[ZMQ] " + (connected ? "OK: " : "WARNING: ") + msg);   // always logged, regardless of EnableLogging
    if(NotifyConnection)
       SendNotification(StringSubstr(msg, 0, 255));
+   SendHeartbeat(true);   // [v3.5] tell the dashboard straight away
 }
 
 //+------------------------------------------------------------------+
@@ -400,6 +435,170 @@ void RetryFailedCloses()
 }
 
 //+------------------------------------------------------------------+
+//| [v3.5] Execution reports -> bridge (Pinebridge Dashboard)         |
+//| A PUSH socket that CONNECTS to the bridge (outbound from the VM,  |
+//| so no Windows firewall rule is needed). Sends are non-blocking;   |
+//| if the bridge is down, up to 1000 reports queue and the rest are  |
+//| dropped - trading never waits on reporting.                       |
+//+------------------------------------------------------------------+
+void InitReports()
+{
+   if(!EnableReports || ReportAddress == "") { Log("  Execution reports: OFF"); return; }
+   g_reportSocket = new ZmqSocket(g_context.ref(), ZMQ_SOCKET_PUSH);
+   if(!g_reportSocket.isValid())
+   {
+      Log("WARNING: Could not create the report socket - dashboard reports disabled");
+      delete g_reportSocket;
+      g_reportSocket = NULL;
+      return;
+   }
+   g_reportSocket.setLinger(0);
+   g_reportSocket.setSendHighWaterMark(1000);
+   if(!g_reportSocket.connect(ReportAddress))
+   {
+      Log("WARNING: Could not connect reports to " + ReportAddress + " - dashboard reports disabled");
+      delete g_reportSocket;
+      g_reportSocket = NULL;
+      return;
+   }
+   Log("  Execution reports: -> " + ReportAddress);
+   SendHeartbeat(true);
+}
+
+void SendReport(string json)
+{
+   if(g_reportSocket == NULL) return;
+   g_reportSocket.send(json, ZMQ_FLAG_DONTWAIT);
+}
+
+string JsonEscape(string s)
+{
+   StringReplace(s, "\\", "\\\\");
+   StringReplace(s, "\"", "\\\"");
+   StringReplace(s, "\r", " ");
+   StringReplace(s, "\n", " ");
+   StringReplace(s, "\t", " ");
+   return s;
+}
+
+string JStr(string key, string value) { return "\"" + key + "\":\"" + JsonEscape(value) + "\""; }
+string JNum(string key, double value, int digits) { return "\"" + key + "\":" + DoubleToString(value, digits); }
+string JInt(string key, long value) { return "\"" + key + "\":" + IntegerToString(value); }
+string JBool(string key, bool value) { return "\"" + key + "\":" + (value ? "true" : "false"); }
+
+// Called right after a successful market BUY/SELL.
+void RecordFill(double requestedPrice)
+{
+   g_ackOrder = trade.ResultOrder();
+   g_ackReqPrice = requestedPrice;
+   g_ackFillPrice = trade.ResultPrice();
+   g_ackVolume = trade.ResultVolume();
+   g_ackRetcode = trade.ResultRetcode();
+   // Some execution modes leave result.price at 0: read the deal instead.
+   if(g_ackFillPrice <= 0 && trade.ResultDeal() > 0 && HistoryDealSelect(trade.ResultDeal()))
+      g_ackFillPrice = HistoryDealGetDouble(trade.ResultDeal(), DEAL_PRICE);
+}
+
+void SendAck(string json, bool ok, uint elapsedMs)
+{
+   if(g_reportSocket == NULL) return;
+   string signalId = ParseJsonString(json, "signal_id");
+   if(signalId == "") return;   // not from a dashboard-aware bridge
+   string symbol = ParseJsonString(json, "symbol");
+   int digits = symbol != "" ? (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS) : 5;
+   string closed = g_ackClosed == "" ? "[]" : "[" + g_ackClosed + "]";
+   SendReport("{" + JStr("type", "ack") + "," + JStr("signal_id", signalId) + "," + JBool("ok", ok)
+              + "," + JInt("retcode", g_ackRetcode) + "," + JStr("detail", g_lastLog)
+              + "," + JStr("symbol", symbol) + "," + JInt("order", (long)g_ackOrder)
+              + "," + JNum("requested_price", g_ackReqPrice, digits) + "," + JNum("fill_price", g_ackFillPrice, digits)
+              + "," + JNum("volume", g_ackVolume, 2)
+              + "," + JNum("tick_size", symbol != "" ? SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE) : 0.0, 10)
+              + "," + JNum("tick_value", symbol != "" ? SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE) : 0.0, 6)
+              + "," + JInt("ea_ms", elapsedMs) + ",\"closed_tickets\":" + closed + "}");
+}
+
+string DealReasonText(long reason)
+{
+   switch((int)reason)
+   {
+      case DEAL_REASON_SL:     return "sl";
+      case DEAL_REASON_TP:     return "tp";
+      case DEAL_REASON_SO:     return "stop_out";
+      case DEAL_REASON_EXPERT: return "ea";
+      case DEAL_REASON_CLIENT: case DEAL_REASON_MOBILE: case DEAL_REASON_WEB: return "manual";
+   }
+   return "other";
+}
+
+// Every deal on this EA's magic number, including SL/TP closes by the broker.
+void OnTradeTransaction(const MqlTradeTransaction &trans, const MqlTradeRequest &request, const MqlTradeResult &result)
+{
+   if(g_reportSocket == NULL || trans.type != TRADE_TRANSACTION_DEAL_ADD) return;
+   ulong deal = trans.deal;
+   if(!HistoryDealSelect(deal)) return;
+   if((ulong)HistoryDealGetInteger(deal, DEAL_MAGIC) != MagicNumber) return;
+   long type = HistoryDealGetInteger(deal, DEAL_TYPE);
+   if(type != DEAL_TYPE_BUY && type != DEAL_TYPE_SELL) return;
+
+   long entry = HistoryDealGetInteger(deal, DEAL_ENTRY);
+   string entryText = entry == DEAL_ENTRY_IN ? "in" : entry == DEAL_ENTRY_OUT ? "out"
+                    : entry == DEAL_ENTRY_INOUT ? "inout" : "out_by";
+   string symbol = HistoryDealGetString(deal, DEAL_SYMBOL);
+   int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+   SendReport("{" + JStr("type", "deal") + "," + JInt("deal", (long)deal)
+              + "," + JInt("order", HistoryDealGetInteger(deal, DEAL_ORDER))
+              + "," + JInt("position_id", HistoryDealGetInteger(deal, DEAL_POSITION_ID))
+              + "," + JStr("symbol", symbol) + "," + JStr("side", type == DEAL_TYPE_BUY ? "buy" : "sell")
+              + "," + JStr("entry", entryText)
+              + "," + JNum("volume", HistoryDealGetDouble(deal, DEAL_VOLUME), 2)
+              + "," + JNum("price", HistoryDealGetDouble(deal, DEAL_PRICE), digits)
+              + "," + JNum("profit", HistoryDealGetDouble(deal, DEAL_PROFIT), 2)
+              + "," + JNum("commission", HistoryDealGetDouble(deal, DEAL_COMMISSION), 2)
+              + "," + JNum("swap", HistoryDealGetDouble(deal, DEAL_SWAP), 2)
+              + "," + JNum("time", HistoryDealGetInteger(deal, DEAL_TIME_MSC) / 1000.0, 3)
+              + "," + JStr("reason", DealReasonText(HistoryDealGetInteger(deal, DEAL_REASON))) + "}");
+}
+
+void SendHeartbeat(bool force)
+{
+   if(g_reportSocket == NULL) return;
+   if(!force && GetTickCount() - g_lastHeartbeatTick < (uint)MathMax(HeartbeatSec, 5) * 1000) return;
+   g_lastHeartbeatTick = GetTickCount();
+
+   string positions = "";
+   for(int i = 0; i < PositionsTotal(); i++)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0 || PositionGetInteger(POSITION_MAGIC) != MagicNumber) continue;
+      string symbol = PositionGetString(POSITION_SYMBOL);
+      int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+      positions += (positions == "" ? "" : ",") + "{" + JInt("ticket", (long)ticket) + "," + JStr("symbol", symbol)
+                   + "," + JStr("side", PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY ? "buy" : "sell")
+                   + "," + JNum("volume", PositionGetDouble(POSITION_VOLUME), 2)
+                   + "," + JNum("open_price", PositionGetDouble(POSITION_PRICE_OPEN), digits)
+                   + "," + JNum("current_price", PositionGetDouble(POSITION_PRICE_CURRENT), digits)
+                   + "," + JNum("sl", PositionGetDouble(POSITION_SL), digits)
+                   + "," + JNum("tp", PositionGetDouble(POSITION_TP), digits)
+                   + "," + JNum("profit", PositionGetDouble(POSITION_PROFIT) + PositionGetDouble(POSITION_SWAP), 2)
+                   + "," + JNum("opened_at", (double)PositionGetInteger(POSITION_TIME), 0) + "}";
+   }
+
+   SendReport("{" + JStr("type", "account")
+              + "," + JNum("balance", AccountInfoDouble(ACCOUNT_BALANCE), 2)
+              + "," + JNum("equity", AccountInfoDouble(ACCOUNT_EQUITY), 2)
+              + "," + JNum("margin", AccountInfoDouble(ACCOUNT_MARGIN), 2)
+              + "," + JNum("free_margin", AccountInfoDouble(ACCOUNT_MARGIN_FREE), 2)
+              + "," + JStr("currency", AccountInfoString(ACCOUNT_CURRENCY))
+              + "," + JStr("server", AccountInfoString(ACCOUNT_SERVER))
+              + "," + JBool("connected", (bool)TerminalInfoInteger(TERMINAL_CONNECTED))
+              + "," + JBool("terminal_trade_allowed", (bool)TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
+              + "," + JBool("ea_trade_allowed", (bool)MQLInfoInteger(MQL_TRADE_ALLOWED))
+              + "," + JStr("ea_version", "3.5")
+              + "," + JInt("pending_close_retries", ArraySize(g_retryTickets))
+              + ",\"positions\":[" + positions + "]}");
+}
+
+//+------------------------------------------------------------------+
 //| [v3.4] "<code> - <description>" for the last trade result, with   |
 //| a readable explanation for codes CTrade doesn't describe.         |
 //+------------------------------------------------------------------+
@@ -440,6 +639,7 @@ void CheckForMessages()
          bool success = ProcessSignal(message);
 
          uint elapsed = GetTickCount() - startTime;
+         SendAck(message, success, elapsed);
          Log("Processing time: " + IntegerToString(elapsed) + "ms");
          Log("----------------------------------------------------");
       }
@@ -562,6 +762,8 @@ bool CheckSpread(string symbol)
 bool ProcessSignal(string json)
 {
    Log("=== Processing Signal ===");
+   g_ackOrder = 0; g_ackReqPrice = 0; g_ackFillPrice = 0; g_ackVolume = 0;
+   g_ackRetcode = 0; g_ackClosed = "";
 
    // Parse JSON fields
    string action = ParseJsonString(json, "action");
@@ -758,6 +960,7 @@ bool ExecuteTrade(string action, string symbol, double lots, double slPips, doub
       {
          Log("OK: BUY EXECUTED! Ticket: " + IntegerToString((int)trade.ResultOrder()) +
              " @ " + DoubleToString(trade.ResultPrice(), digits));
+         RecordFill(entryPrice);
          return true;
       }
    }
@@ -775,10 +978,12 @@ bool ExecuteTrade(string action, string symbol, double lots, double slPips, doub
       {
          Log("OK: SELL EXECUTED! Ticket: " + IntegerToString((int)trade.ResultOrder()) +
              " @ " + DoubleToString(trade.ResultPrice(), digits));
+         RecordFill(entryPrice);
          return true;
       }
    }
 
+   g_ackRetcode = trade.ResultRetcode();
    Log("FAIL: TRADE FAILED: " + RetcodeText());
    return false;
 }
@@ -851,9 +1056,11 @@ bool ClosePositions(string symbol, int positionType)
       {
          Log("OK: Closed ticket " + IntegerToString((int)ticket));
          closedCount++;
+         g_ackClosed += (g_ackClosed == "" ? "" : ",") + IntegerToString((long)ticket);
       }
       else
       {
+         g_ackRetcode = trade.ResultRetcode();
          Log("FAIL: Failed to close ticket " + IntegerToString((int)ticket) + ": " + RetcodeText());
          failedCount++;
          QueueCloseRetry(ticket);
@@ -961,9 +1168,14 @@ bool ArmLimitOrder(string symbol, bool isLong, double limitPrice, double lots,
    {
       Log("OK: LIMIT ORDER ARMED! Ticket: " + IntegerToString((int)trade.ResultOrder()));
       g_limitOrdersArmed++;
+      g_ackOrder = trade.ResultOrder();
+      g_ackReqPrice = limitPrice;
+      g_ackVolume = lots;
+      g_ackRetcode = trade.ResultRetcode();
       return true;
    }
 
+   g_ackRetcode = trade.ResultRetcode();
    Log("FAIL: ARM FAILED: " + RetcodeText());
    return false;
 }
@@ -1094,6 +1306,7 @@ bool ModifyOpenPosition(string symbol, bool hasSl, double newSl, bool hasTp, dou
       }
       else
       {
+         g_ackRetcode = trade.ResultRetcode();
          Log("FAIL: MODIFY FAILED for ticket " + IntegerToString((int)ticket) + ": " + RetcodeText());
          failed++;
       }
@@ -1225,6 +1438,7 @@ bool JsonHasNonNull(string json, string key)
 //+------------------------------------------------------------------+
 void Log(string message)
 {
+   g_lastLog = message;   // [v3.5] reported as the ack's "detail"
    if(!EnableLogging) return;
    Print("[ZMQ] " + message);
 }
