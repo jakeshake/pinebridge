@@ -15,7 +15,7 @@ signal-relay subscription, no VPS bill, and your broker login stays on your
 own server instead of with a third-party service.
 
 > **This executes real trades on a real or demo account with no human in
-> the loop.** Read the [risk notice](LICENSE) before using this with a live
+> the loop.** Read the [risk notice](DISCLAIMER.md) before using this with a live
 > account, and test on a demo account first.
 
 ## How it works
@@ -107,4 +107,4 @@ If Pinebridge saves you a VPS or a signal subscription, consider
 
 ## License
 
-[MIT](LICENSE), plus a trading-risk notice — please read it.
+[MIT](LICENSE). Please also read the [automated trading risk notice](DISCLAIMER.md).

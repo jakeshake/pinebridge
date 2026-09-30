@@ -9,8 +9,13 @@
   <Privileged>false</Privileged>
   <Support>https://forums.unraid.net/topic/200736-support-jakeshake-pinebridge-tradingview-alerts-%E2%86%92-metatrader-5/</Support>
   <Project>https://github.com/jakeshake/pinebridge</Project>
-  <Overview>Pinebridge: TradingView alerts to MetaTrader 5. Send TradingView alerts straight to MetaTrader 5 on your own Unraid server. No paid signal-relay service, no VPS. This container receives the TradingView webhook alerts and passes them over ZeroMQ to the Expert Advisor in pinebridge-mt5. Needs pinebridge-mt5 running alongside it; the webhook secret is generated for you.</Overview>
-  <Category>Other:</Category>
+  <Overview>Pinebridge: TradingView alerts to MetaTrader 5. Send TradingView alerts straight to MetaTrader 5 on your own Unraid server. No paid signal-relay service, no VPS. This container receives the TradingView webhook alerts and passes them over ZeroMQ to the Expert Advisor in pinebridge-mt5. Needs pinebridge-mt5 running alongside it; the webhook secret is generated for you. Places real trades automatically: read the risk notice (https://github.com/jakeshake/pinebridge/blob/main/DISCLAIMER.md) and test on a demo account first.</Overview>
+  <Description>Pinebridge: TradingView alerts to MetaTrader 5. Send TradingView alerts straight to MetaTrader 5 on your own Unraid server. No paid signal-relay service, no VPS. This container receives the TradingView webhook alerts and passes them over ZeroMQ to the Expert Advisor in pinebridge-mt5. Needs pinebridge-mt5 running alongside it; the webhook secret is generated for you. Places real trades automatically: read the risk notice (https://github.com/jakeshake/pinebridge/blob/main/DISCLAIMER.md) and test on a demo account first.</Description>
+  <ReadMe>https://raw.githubusercontent.com/jakeshake/pinebridge/main/README.md</ReadMe>
+  <License>MIT</License>
+  <ExtraSearchTerms>tradingview metatrader mt5 webhook trading alerts forex dashboard pinebridge</ExtraSearchTerms>
+  <Screenshot>https://raw.githubusercontent.com/jakeshake/pinebridge/main/docs/screenshots/dashboard.png</Screenshot>
+  <Category>Productivity: Network:Other</Category>
   <WebUI>http://[IP]:[PORT:8081]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/jakeshake/pinebridge/main/unraid-templates/pinebridge-bridge.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/jakeshake/pinebridge/main/docs/icons/pinebridge-bridge.png</Icon>

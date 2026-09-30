@@ -6,7 +6,13 @@ downloading -- the images carry all the provisioning files.
 
 ## 1. Add the templates
 
-Open a terminal on Unraid (the `>_` icon, top right) and run:
+**From the Apps tab (once Pinebridge is listed in Community Applications):**
+open **Apps**, search for **Pinebridge**, and install `pinebridge-mt5`,
+`pinebridge-bridge` and, if you need a tunnel, `pinebridge-tunnel`. Each one
+opens the same form described in step 2, so skip to step 2.
+
+**Or add them by hand** (before the listing is live, or if you prefer): open
+a terminal on Unraid (the `>_` icon, top right) and run:
 
 ```bash
 cd /boot/config/plugins/dockerMan/templates-user && for t in mt5 bridge tunnel; do wget -qO "my-pinebridge_$t.xml" "https://raw.githubusercontent.com/jakeshake/pinebridge/main/unraid-templates/pinebridge-$t.xml"; done
@@ -18,8 +24,8 @@ names deliberately don't match any container name -- otherwise re-running
 this would wipe your saved settings.)
 
 (Community Applications' "template repositories" setting isn't present in
-current CA releases, so this is the supported way to add third-party
-templates until these are listed in CA itself.)
+current CA releases, so this one-liner is the way to add the templates
+without the Apps tab.)
 
 ## 2. Install the containers
 

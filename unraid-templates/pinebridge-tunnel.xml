@@ -9,8 +9,12 @@
   <Privileged>false</Privileged>
   <Support>https://forums.unraid.net/topic/200736-support-jakeshake-pinebridge-tradingview-alerts-%E2%86%92-metatrader-5/</Support>
   <Project>https://github.com/jakeshake/pinebridge</Project>
-  <Overview>Pinebridge: TradingView alerts to MetaTrader 5. Send TradingView alerts straight to MetaTrader 5 on your own Unraid server. No paid signal-relay service, no VPS. This optional container is a Cloudflare Tunnel connector that exposes the pinebridge-bridge webhook to the internet with a stable HTTPS URL and no port-forwarding. Create the tunnel and token in the Cloudflare Zero Trust dashboard first -- see docs/cloudflare-tunnel-setup.md in the Pinebridge repo. Skip it if you already run a Cloudflare tunnel.</Overview>
-  <Category>Other:</Category>
+  <Overview>Pinebridge: TradingView alerts to MetaTrader 5. Send TradingView alerts straight to MetaTrader 5 on your own Unraid server. No paid signal-relay service, no VPS. This optional container is a Cloudflare Tunnel connector that exposes the pinebridge-bridge webhook to the internet with a stable HTTPS URL and no port-forwarding. Create the tunnel and token in the Cloudflare Zero Trust dashboard first -- see docs/cloudflare-tunnel-setup.md in the Pinebridge repo. Skip it if you already run a Cloudflare tunnel. Places real trades automatically: read the risk notice (https://github.com/jakeshake/pinebridge/blob/main/DISCLAIMER.md) and test on a demo account first.</Overview>
+  <Description>Pinebridge: TradingView alerts to MetaTrader 5. Send TradingView alerts straight to MetaTrader 5 on your own Unraid server. No paid signal-relay service, no VPS. This optional container is a Cloudflare Tunnel connector that exposes the pinebridge-bridge webhook to the internet with a stable HTTPS URL and no port-forwarding. Create the tunnel and token in the Cloudflare Zero Trust dashboard first -- see docs/cloudflare-tunnel-setup.md in the Pinebridge repo. Skip it if you already run a Cloudflare tunnel. Places real trades automatically: read the risk notice (https://github.com/jakeshake/pinebridge/blob/main/DISCLAIMER.md) and test on a demo account first.</Description>
+  <ReadMe>https://raw.githubusercontent.com/jakeshake/pinebridge/main/README.md</ReadMe>
+  <License>MIT</License>
+  <ExtraSearchTerms>cloudflare tunnel cloudflared tradingview webhook pinebridge</ExtraSearchTerms>
+  <Category>Network:Other</Category>
   <WebUI/>
   <TemplateURL>https://raw.githubusercontent.com/jakeshake/pinebridge/main/unraid-templates/pinebridge-tunnel.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/jakeshake/pinebridge/main/docs/icons/pinebridge-tunnel.png</Icon>
