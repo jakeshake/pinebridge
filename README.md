@@ -15,7 +15,7 @@ in MT5, which runs in a Windows VM on your own machine. No signal-relay
 subscription, no VPS bill, and your broker login stays on your server
 instead of with a third-party service.
 
-<p align="center"><img src="docs/screenshots/dashboard-overview.png" alt="The Pinebridge Dashboard: signals, fill rate, win rate, PnL, slippage against TradingView, latency and equity" width="900"></p>
+<p align="center"><img src="docs/screenshots/dashboard-overview.png" alt="The Pinebridge Dashboard: run picker, pair and strategy filters, net PnL, win rate, expectancy, profit factor, drawdown, slippage against TradingView, latency and equity" width="900"></p>
 
 > [!WARNING]
 > **Pinebridge places real trades automatically, with no human
@@ -52,11 +52,16 @@ flowchart TD
 ## Screenshots
 
 **The dashboard** (`http://<server>:8081`, LAN only): every signal and what
-happened to it, fill prices, slippage against TradingView's price and the
-broker's quote, latency, win rate, PnL, cost of execution and the equity
-curve. [More about the dashboard](docs/dashboard.md).
+happened to it, and every closed trade from MT5's deal history (including
+broker SL/TP closes) with its pips and net PnL. Stats per run, pair and
+strategy: win rate, expectancy, profit factor, average win/loss, max
+drawdown, slippage against TradingView's price and the broker's quote,
+latency, cost of execution and the equity curve. Start a named run to test
+a strategy on its own (nothing is deleted), filter by pair or strategy, and
+download the trades and signal log as CSV.
+[More about the dashboard](docs/dashboard.md).
 
-<p align="center"><img src="docs/screenshots/dashboard.png" alt="Full Pinebridge Dashboard with the recent-signals table" width="900"></p>
+<p align="center"><img src="docs/screenshots/dashboard.png" alt="Full Pinebridge Dashboard: tiles, equity and slippage charts, by-pair and by-strategy tables, and the closed-trades table" width="900"></p>
 
 **MetaTrader 5 in the VM**, running the Pinebridge EA. Its Experts tab
 logs each signal as it arrives (here a `CLOSELONG`, closed in 172 ms).
@@ -212,6 +217,17 @@ uses the same images. Proxmox and bring-your-own-MT5 reports are welcome.
 
 If Pinebridge saves you a VPS or a signal subscription, consider
 [buying me a coffee](https://buymeacoffee.com/jakeshake).
+
+**Supporter perks:**
+
+- **Any donation:** a ready-to-use Pine strategy that sends
+  Pinebridge-formatted alerts.
+- **$20 or more:** a premium Pine strategy.
+
+After donating, message me on Buy Me a Coffee with your TradingView
+username, and I'll give you access to the invite-only script on
+TradingView. The scripts are tools, not trading advice: backtests and past
+results don't predict future returns. Run them on a demo account first.
 
 ## License
 
