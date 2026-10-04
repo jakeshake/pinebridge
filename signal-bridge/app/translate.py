@@ -8,6 +8,8 @@ handlers without touching the generic path. The resting-limit-order
 signals (armlong/armshort/cancellong/cancelshort, sent by the IGT Pine
 script's "Resting Limit Order Entries" feature) are registered below.
 """
+import re
+import zlib
 from datetime import datetime, timezone
 
 from . import config
@@ -44,6 +46,39 @@ VALID_ACTIONS = {
     "BUY", "SELL", "CLOSE", "CLOSELONG", "CLOSESHORT", "MODIFY",
     "ARM_LONG", "ARM_SHORT", "CANCEL_LONG", "CANCEL_SHORT",
 }
+
+UNTAGGED = "untagged"
+ENTRY_ACTIONS = {"BUY", "SELL", "ARM_LONG", "ARM_SHORT"}
+_TAG_BAD = re.compile(r"[^a-z0-9._-]+")
+
+
+def normalize_strategy(value):
+    """Pine's `strategy=<tag>` -> a lowercase tag of at most 16 characters
+    (safe in an MT5 order comment), or None when absent. Anything outside
+    a-z 0-9 . _ - becomes "-"."""
+    if value is None:
+        return None
+    tag = _TAG_BAD.sub("-", str(value).strip().lower()).strip("-.")[:16].strip("-.")
+    return tag if tag and tag != UNTAGGED else None
+
+
+def strategy_slot(tag):
+    """Stable 1..999 number for a tag. The EA (v3.7+) opens that strategy's
+    orders with magic MagicNumber * 1000 + slot, so the broker carries the
+    strategy on every deal of the position, including its own SL/TP
+    closes. Untagged orders keep the plain MagicNumber."""
+    return zlib.crc32(tag.encode()) % 999 + 1
+
+
+def _attach_strategy(ea_signal, parsed_data):
+    tag = normalize_strategy(parsed_data.get("strategy"))
+    if tag:
+        ea_signal["strategy"] = tag
+        if ea_signal.get("action") in ENTRY_ACTIONS:
+            ea_signal["comment"] = tag
+            ea_signal["magic_slot"] = strategy_slot(tag)
+    return ea_signal
+
 
 # Signal types handled by a dedicated function instead of the generic
 # entry/exit path below. Populated by register_handler(); empty by default.
@@ -165,7 +200,7 @@ def translate(parsed_data):
 
     handler = SIGNAL_HANDLERS.get(signal_type)
     if handler is not None:
-        return handler(parsed_data, symbol, pip_size)
+        return _attach_strategy(handler(parsed_data, symbol, pip_size), parsed_data)
 
     if signal_type not in ACTION_MAP:
         raise ValueError(f"Unrecognized signal type: {signal_type!r}")
@@ -199,13 +234,15 @@ def translate(parsed_data):
     if action in ("BUY", "SELL"):
         ea_signal["zone_id"] = _zone_id(parsed_data)
         ea_signal["dd"] = 1 if str(parsed_data.get("dd", 0)).lower() in ("1", "true") else 0
-    return ea_signal
+    return _attach_strategy(ea_signal, parsed_data)
 
 
 def describe(ea_signal):
     """Human-readable one-liner for logging."""
     action = ea_signal.get("action", "")
     symbol = ea_signal.get("symbol", "")
+    if ea_signal.get("strategy"):
+        symbol = f"{symbol} [{ea_signal['strategy']}]"
     if action == "MODIFY":
         return f"{action} {symbol} sl={ea_signal.get('sl_price')} tp={ea_signal.get('tp_price')}"
     if action.startswith("CANCEL_"):

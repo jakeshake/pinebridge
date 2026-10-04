@@ -78,3 +78,45 @@ def parse_tv_time(value):
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.timestamp()
+
+
+def _avg(values):
+    values = [v for v in values if v is not None]
+    return sum(values) / len(values) if values else None
+
+
+def max_drawdown(net_pnls):
+    """Largest peak-to-trough fall of cumulative net PnL, in the order
+    given (close order), starting from 0. Returned as a positive amount."""
+    equity = peak = worst = 0.0
+    for pnl in net_pnls:
+        equity += pnl
+        peak = max(peak, equity)
+        worst = max(worst, peak - equity)
+    return worst
+
+
+def trade_stats(trades):
+    """KPIs over closed trades (dicts with net_pnl, pips, closed_at).
+    Win = net PnL above zero, loss = below zero; a breakeven trade counts
+    toward trades and expectancy but neither average. Profit factor =
+    gross wins / gross losses (None when there are no losing trades)."""
+    nets = [t["net_pnl"] for t in trades]
+    wins = [n for n in nets if n > 0]
+    losses = [n for n in nets if n < 0]
+    gross_win, gross_loss = sum(wins), -sum(losses)
+    ordered = sorted(trades, key=lambda t: t.get("closed_at") or 0)
+    return {
+        "trades": len(trades),
+        "wins": len(wins),
+        "win_rate": len(wins) / len(nets) if nets else None,
+        "net_pnl": sum(nets),
+        "expectancy": _avg(nets),
+        "expectancy_pips": _avg(t.get("pips") for t in trades),
+        "avg_win": _avg(wins),
+        "avg_loss": _avg(losses),
+        "profit_factor": gross_win / gross_loss if gross_loss > 0 else None,
+        "largest_win": max(wins) if wins else None,
+        "largest_loss": min(losses) if losses else None,
+        "max_drawdown": max_drawdown(t["net_pnl"] for t in ordered) if trades else None,
+    }

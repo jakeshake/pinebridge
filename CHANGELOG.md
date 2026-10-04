@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased: runs, per-trade PnL and strategy attribution
+
+- **Runs:** "Start new run" (named, confirmed) resets the dashboard to a new
+  test without deleting anything. The Run menu switches to earlier runs or
+  All time. A trade belongs to the run it was opened in.
+- **Signals and deals are never deleted any more.** `RETENTION_DAYS` now
+  only prunes the account heartbeats behind the equity chart.
+- **Closed trades table** from MT5's deal history, grouped by position:
+  open/close time, symbol, strategy, side, lots, entry, exit, pips, gross,
+  commission + swap, net (green/red), duration and what closed it. Broker
+  SL/TP closes are included.
+- **New tiles:** expectancy (money and pips), average win and loss, profit
+  factor, largest win and loss, max drawdown.
+- **By pair / by strategy** tables and **filter chips** that filter the
+  whole dashboard.
+- **Download CSV:** `/api/export` gives `trades.csv` and `signals.csv` for
+  the current run, pair and strategy.
+- **Strategy attribution:** the bridge stores each alert's `strategy=<tag>`
+  ("untagged" without one), puts the tag in the MT5 order comment, and asks
+  the EA for a per-strategy magic number. `python -m app.backfill
+  SYMBOL=tag` attributes older, untagged trades by pair.
+- **EA v3.7:** tagged entries open with magic `MagicNumber × 1000 + slot`.
+  The EA treats that whole family as its own (closes, modify, limit orders,
+  reports), closes with the position's own magic, and adds magic and order
+  comment to deal reports and the heartbeat. Untagged signals behave as
+  before. Recompile, then remove the EA from the chart and attach it again.
+  Older EAs ignore the new fields; attribution then relies on the entry
+  signal and the order comment.
+
 ## Unreleased: dashboard follow-ups
 
 - **EA v3.6:** close acks report the exit fill (volume-weighted across the
