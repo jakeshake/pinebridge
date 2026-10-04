@@ -141,12 +141,17 @@ def test_account_heartbeat_and_prune(store):
     reports.handle(store, json.dumps({"type": "account", "balance": 50000, "equity": 49990.5,
                                       "connected": True, "positions": [{"ticket": 1}], "currency": "USD"}))
     o = store.overview()
-    assert o["kpis"]["equity"] == 49990.5 and o["positions"] == [{"ticket": 1}]
+    assert o["kpis"]["equity"] == 49990.5 and o["positions"] == [{"ticket": 1, "strategy": "untagged"}]
     assert o["ea"]["connected"] is True
+    # Pruning drops old heartbeats only: signals and deals are kept forever.
     _entry(store)
+    store.add_deal({"deal": 1, "order": 9, "position_id": 9, "symbol": "EURUSD", "entry": "in", "time": 0})
     store._write("UPDATE signals SET received_at = 0")
+    store._write("UPDATE account SET ts = 0")
     store.prune(1)
-    assert store.overview()["signals"] == []
+    assert len(store.overview()["signals"]) == 1
+    assert len(store.positions()) == 1
+    assert store.overview()["equity"] == []
 
 
 def test_malformed_and_unknown_reports_are_ignored(store):

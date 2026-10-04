@@ -46,6 +46,8 @@ DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "")
 REPORT_PORT = int(os.environ.get("REPORT_PORT", "5556"))
 DATA_DIR = os.environ.get("DATA_DIR", CONFIG_DIR)
 DB_PATH = os.path.join(DATA_DIR, "pinebridge.db")
+# Days of account heartbeats (the equity chart) to keep. Signals and deals
+# are the trade record and are never pruned.
 RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", "90"))
 
 # Optional public base URL (e.g. https://tv-webhook.example.com), only used

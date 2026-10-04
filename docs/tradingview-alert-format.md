@@ -18,11 +18,31 @@ string (a JSON object body also works, with the same keys).
 | `qty` | Size in base-currency units (e.g. `100000` = 1.0 standard lot). Alternatively send `size` directly in lots. |
 | `entry_price` | Price at signal time, used to convert `sl_price`/`tp_price` into pip distances |
 | `sl_price`, `tp_price` | Absolute stop-loss / take-profit prices. Alternatively send `sl_pips`/`tp_pips` directly. |
-| `comment` | Optional; tags the trade in MT5 |
+| `comment` | Optional; tags the trade in MT5 (replaced by `strategy` when that's sent) |
+| `strategy` | Optional, but send it on every message: which strategy this is. See below. |
 
 ```
-signal=long,symbol=EURUSD,qty=100000,entry_price=1.0850,sl_price=1.0800,tp_price=1.0950,secret=YOUR_SECRET
+signal=long,symbol=EURUSD,qty=100000,entry_price=1.0850,sl_price=1.0800,tp_price=1.0950,strategy=sflow-v2,secret=YOUR_SECRET
 ```
+
+## Strategy tag: `strategy=<tag>`
+
+Add `strategy=<tag>` to every message a script sends (entries, exits,
+modify, arm/cancel). It's what the [dashboard](dashboard.md) groups and
+filters by. Use lowercase, no commas or `=`, at most 16 characters, e.g.
+`sflow-v2` or `igt`. Anything else is lowercased, unsafe characters become
+`-`, and it's cut to 16. Messages without a tag show as "untagged".
+
+On entries (`long`/`short`/`armlong`/`armshort`) the bridge also:
+
+- puts the tag in the MT5 order comment, and
+- with EA v3.7+, opens the order with a magic number derived from the tag
+  (`MagicNumber × 1000 + a 1–999 slot`). The broker copies the magic number
+  onto every deal of the position, including its own SL/TP closes, so the
+  attribution survives trades nobody signalled.
+
+Closes still act on every Pinebridge position on the symbol, as before,
+whatever their tag.
 
 ## Exits
 

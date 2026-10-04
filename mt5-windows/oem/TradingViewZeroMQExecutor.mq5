@@ -26,6 +26,13 @@
 //| v3.6: Close acks report the exit fill (volume-weighted price of  |
 //|       the closed legs) and the quote at send, so the dashboard   |
 //|       shows exit slippage too.                                   |
+//| v3.7: Strategy attribution. A signal tagged strategy=<tag> comes |
+//|       with magic_slot (1-999, from the bridge); its orders open  |
+//|       with magic MagicNumber*1000+slot, so every deal of the     |
+//|       position - broker SL/TP closes too - carries the strategy. |
+//|       That whole magic family counts as this EA's own. Closes    |
+//|       use the position's magic; deal reports and the heartbeat   |
+//|       include magic and order comment. Untagged = as before.     |
 //|                                                                  |
 //| Receives signals INSTANTLY via ZeroMQ PULL socket from Flask.   |
 //| Latency: ~1-5ms from Flask to MT5                                |
@@ -36,9 +43,9 @@
 //|   3. Copy libzmq.dll & libsodium.dll to MQL5/Libraries/          |
 //|   4. Enable "Allow DLL imports" in MT5 Options                   |
 //+------------------------------------------------------------------+
-#property copyright "Pinebridge EA (TradingView ZeroMQ Executor) v3.6"
+#property copyright "Pinebridge EA (TradingView ZeroMQ Executor) v3.7"
 #property link      "https://github.com/ding9736/MQL5-ZeroMQ"
-#property version   "3.60"
+#property version   "3.70"
 #property strict
 
 // ZeroMQ library (ding9736 version)
@@ -123,7 +130,7 @@ datetime    g_disconnectedAt = 0;
 int OnInit()
 {
    Log("====================================================");
-   Log("Pinebridge EA (TradingView ZeroMQ Executor) v3.6 Starting...");
+   Log("Pinebridge EA (TradingView ZeroMQ Executor) v3.7 Starting...");
    Log("  Using: ding9736/MQL5-ZeroMQ library");
    Log("====================================================");
 
@@ -419,7 +426,7 @@ void RetryFailedCloses()
       if(i < 0) continue;
 
       ulong ticket = g_retryTickets[i];
-      if(trade.PositionClose(ticket))
+      if(ClosePositionAsOwner(ticket))
       {
          Print("[ZMQ] OK: Closed ticket " + IntegerToString((long)ticket) + " on retry");
          g_closesRetried++;
@@ -489,6 +496,35 @@ string JNum(string key, double value, int digits) { return "\"" + key + "\":" + 
 string JInt(string key, long value) { return "\"" + key + "\":" + IntegerToString(value); }
 string JBool(string key, bool value) { return "\"" + key + "\":" + (value ? "true" : "false"); }
 
+//+------------------------------------------------------------------+
+//| [v3.7] Strategy magic numbers. Untagged orders use MagicNumber;  |
+//| a tagged entry uses MagicNumber * 1000 + slot (slot 1-999).      |
+//+------------------------------------------------------------------+
+bool IsOurMagic(long magic)
+{
+   if(magic <= 0) return false;
+   if((ulong)magic == MagicNumber) return true;
+   return (ulong)magic / 1000 == MagicNumber && magic % 1000 != 0;
+}
+
+ulong StrategyMagic(long slot)
+{
+   // Leave headroom so MagicNumber * 1000 can't overflow.
+   if(slot < 1 || slot > 999 || MagicNumber > 9000000000000000) return MagicNumber;
+   return MagicNumber * 1000 + (ulong)slot;
+}
+
+// Close with the position's own magic, so the closing deal carries
+// its strategy as well (broker SL/TP closes already do).
+bool ClosePositionAsOwner(ulong ticket)
+{
+   if(PositionSelectByTicket(ticket))
+      trade.SetExpertMagicNumber((ulong)PositionGetInteger(POSITION_MAGIC));
+   bool ok = trade.PositionClose(ticket);
+   trade.SetExpertMagicNumber(MagicNumber);
+   return ok;
+}
+
 // Called right after a successful market BUY/SELL.
 void RecordFill(double requestedPrice)
 {
@@ -539,7 +575,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans, const MqlTradeRequest 
    if(g_reportSocket == NULL || trans.type != TRADE_TRANSACTION_DEAL_ADD) return;
    ulong deal = trans.deal;
    if(!HistoryDealSelect(deal)) return;
-   if((ulong)HistoryDealGetInteger(deal, DEAL_MAGIC) != MagicNumber) return;
+   if(!IsOurMagic(HistoryDealGetInteger(deal, DEAL_MAGIC))) return;
    long type = HistoryDealGetInteger(deal, DEAL_TYPE);
    if(type != DEAL_TYPE_BUY && type != DEAL_TYPE_SELL) return;
 
@@ -559,7 +595,9 @@ void OnTradeTransaction(const MqlTradeTransaction &trans, const MqlTradeRequest 
               + "," + JNum("commission", HistoryDealGetDouble(deal, DEAL_COMMISSION), 2)
               + "," + JNum("swap", HistoryDealGetDouble(deal, DEAL_SWAP), 2)
               + "," + JNum("time", HistoryDealGetInteger(deal, DEAL_TIME_MSC) / 1000.0, 3)
-              + "," + JStr("reason", DealReasonText(HistoryDealGetInteger(deal, DEAL_REASON))) + "}");
+              + "," + JStr("reason", DealReasonText(HistoryDealGetInteger(deal, DEAL_REASON)))
+              + "," + JInt("magic", HistoryDealGetInteger(deal, DEAL_MAGIC))
+              + "," + JStr("comment", HistoryDealGetString(deal, DEAL_COMMENT)) + "}");
 }
 
 void SendHeartbeat(bool force)
@@ -572,7 +610,7 @@ void SendHeartbeat(bool force)
    for(int i = 0; i < PositionsTotal(); i++)
    {
       ulong ticket = PositionGetTicket(i);
-      if(ticket == 0 || PositionGetInteger(POSITION_MAGIC) != MagicNumber) continue;
+      if(ticket == 0 || !IsOurMagic(PositionGetInteger(POSITION_MAGIC))) continue;
       string symbol = PositionGetString(POSITION_SYMBOL);
       int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
       positions += (positions == "" ? "" : ",") + "{" + JInt("ticket", (long)ticket) + "," + JStr("symbol", symbol)
@@ -583,7 +621,9 @@ void SendHeartbeat(bool force)
                    + "," + JNum("sl", PositionGetDouble(POSITION_SL), digits)
                    + "," + JNum("tp", PositionGetDouble(POSITION_TP), digits)
                    + "," + JNum("profit", PositionGetDouble(POSITION_PROFIT) + PositionGetDouble(POSITION_SWAP), 2)
-                   + "," + JNum("opened_at", (double)PositionGetInteger(POSITION_TIME), 0) + "}";
+                   + "," + JNum("opened_at", (double)PositionGetInteger(POSITION_TIME), 0)
+                   + "," + JInt("magic", PositionGetInteger(POSITION_MAGIC))
+                   + "," + JStr("comment", PositionGetString(POSITION_COMMENT)) + "}";
    }
 
    SendReport("{" + JStr("type", "account")
@@ -596,7 +636,8 @@ void SendHeartbeat(bool force)
               + "," + JBool("connected", (bool)TerminalInfoInteger(TERMINAL_CONNECTED))
               + "," + JBool("terminal_trade_allowed", (bool)TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
               + "," + JBool("ea_trade_allowed", (bool)MQLInfoInteger(MQL_TRADE_ALLOWED))
-              + "," + JStr("ea_version", "3.6")
+              + "," + JStr("ea_version", "3.7")
+              + "," + JInt("magic", (long)MagicNumber)
               + "," + JInt("pending_close_retries", ArraySize(g_retryTickets))
               + ",\"positions\":[" + positions + "]}");
 }
@@ -808,7 +849,9 @@ bool ProcessSignal(string json)
       if(!isDd)
          DeletePendingLimitOrders(symbol, isLong ? ORDER_TYPE_BUY_LIMIT : ORDER_TYPE_SELL_LIMIT, -1,
                                   "superseded by market " + action);
+      trade.SetExpertMagicNumber(StrategyMagic((long)ParseJsonDouble(json, "magic_slot")));
       result = ExecuteTrade(action, symbol, size, slPips, tpPips, comment);
+      trade.SetExpertMagicNumber(MagicNumber);
    }
    else if(action == "CLOSELONG")
    {
@@ -839,7 +882,9 @@ bool ProcessSignal(string json)
       Log("SL Pips: " + DoubleToString(slPips, 1) + "  TP Pips: " + DoubleToString(tpPips, 1));
       Log("Zone: " + zoneSrc + " #" + IntegerToString((int)zoneId));
 
+      trade.SetExpertMagicNumber(StrategyMagic((long)ParseJsonDouble(json, "magic_slot")));
       result = ArmLimitOrder(symbol, isLong, limitPrice, size, slPips, tpPips, comment, zoneId, zoneSrc);
+      trade.SetExpertMagicNumber(MagicNumber);
    }
    else if(action == "CANCEL_LONG" || action == "CANCEL_SHORT")
    {
@@ -1005,7 +1050,7 @@ int CollectPositionsFifo(string symbol, int positionType, ulong &tickets[])
    {
       ulong ticket = PositionGetTicket(i);
       if(ticket == 0) continue;
-      if(PositionGetInteger(POSITION_MAGIC) != MagicNumber) continue;
+      if(!IsOurMagic(PositionGetInteger(POSITION_MAGIC))) continue;
       if(symbol != "" && PositionGetString(POSITION_SYMBOL) != symbol) continue;
       if(positionType >= 0 && PositionGetInteger(POSITION_TYPE) != positionType) continue;
 
@@ -1065,7 +1110,7 @@ bool ClosePositions(string symbol, int positionType)
          quote = SymbolInfoDouble(posSym, isLong ? SYMBOL_BID : SYMBOL_ASK);
          vol = PositionGetDouble(POSITION_VOLUME);
       }
-      if(trade.PositionClose(ticket))
+      if(ClosePositionAsOwner(ticket))
       {
          Log("OK: Closed ticket " + IntegerToString((int)ticket));
          closedCount++;
@@ -1138,7 +1183,7 @@ bool ArmLimitOrder(string symbol, bool isLong, double limitPrice, double lots,
    {
       ulong posTicket = PositionGetTicket(i);
       if(posTicket == 0) continue;
-      if(PositionGetInteger(POSITION_MAGIC) != MagicNumber) continue;
+      if(!IsOurMagic(PositionGetInteger(POSITION_MAGIC))) continue;
       if(PositionGetString(POSITION_SYMBOL) != symbol) continue;
 
       Log("SKIP: Position already open for " + symbol + " (ticket " + IntegerToString((int)posTicket)
@@ -1256,7 +1301,7 @@ int DeletePendingLimitOrders(string symbol, ENUM_ORDER_TYPE orderType, long requ
       ulong ticket = OrderGetTicket(i);
       if(ticket == 0) continue;
 
-      if(OrderGetInteger(ORDER_MAGIC) != MagicNumber) continue;
+      if(!IsOurMagic(OrderGetInteger(ORDER_MAGIC))) continue;
       if(OrderGetString(ORDER_SYMBOL) != symbol) continue;
       if((ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE) != orderType) continue;
 
@@ -1364,7 +1409,7 @@ bool LimitFilledPositionOpen(string symbol, bool isLong)
    {
       ulong ticket = PositionGetTicket(i);
       if(ticket == 0) continue;
-      if(PositionGetInteger(POSITION_MAGIC) != MagicNumber) continue;
+      if(!IsOurMagic(PositionGetInteger(POSITION_MAGIC))) continue;
       if(PositionGetString(POSITION_SYMBOL) != symbol) continue;
       if((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) != wantType) continue;
       if(ExtractZoneIdFromComment(PositionGetString(POSITION_COMMENT)) >= 0) return true;

@@ -6,16 +6,27 @@ to your TradingView alerts:
 ![The Pinebridge Dashboard after a night of live demo-account alerts](screenshots/dashboard.png)
 
 
-- **KPI tiles**: signals today and in total, market fill rate, win rate,
-  net PnL, average slippage (vs TradingView and vs the broker's quote),
-  average latency, equity, and the cost of execution.
+- **Runs**: "Start new run" resets the stats to a named test (e.g. "SFLOW v2
+  test") without deleting anything. See [Runs](#runs).
+- **Filter chips** for pair and strategy, applying to the whole page.
+- **KPI tiles**: net PnL, win rate, expectancy (per trade, in money and
+  pips), profit factor, average win and loss, largest win and loss, max
+  drawdown, signals, market fill rate, average slippage (vs TradingView and
+  vs the broker's quote), average latency, equity, and the cost of execution.
 - **Equity curve**, from the EA's account heartbeat. The y-axis always
   spans at least 0.5% of equity, so a few cents of drift look flat instead of
-  filling the chart.
+  filling the chart. With a pair or strategy chip selected it shows that
+  slice's cumulative net PnL instead (account equity can't be split).
 - **Slippage distribution** of market entries against TradingView's price.
-- **Open positions** and **recent signals**. Each signal shows its status
-  (sent, executed, failed, rejected, not delivered) and the EA's result or
-  error code, e.g. `10031 - no connection` or `10045 - FIFO close rule`.
+- **By pair / by strategy** tables: trades, win %, net PnL, expectancy,
+  profit factor, average entry slippage vs TradingView, and open positions.
+  Click a row to filter.
+- **Open positions**, **closed trades** and **recent signals**. Each signal
+  shows its status (sent, executed, failed, rejected, not delivered) and the
+  EA's result or error code, e.g. `10031 - no connection` or
+  `10045 - FIFO close rule`.
+- **Download CSV**: a zip with `trades.csv` and `signals.csv` for the
+  current run, pair and strategy.
 
 ## Opening it
 
@@ -52,7 +63,8 @@ TradingView --webhook--> bridge --signal (with signal_id)--> EA
     broker connection, algo-trading permission, open positions.
 - Reporting never holds up trading. The EA sends without waiting and drops
   reports if the bridge is unreachable.
-- `RETENTION_DAYS` (default 90) prunes old history at startup.
+- Signals and deals are never deleted. `RETENTION_DAYS` (default 90) only
+  prunes the account heartbeats behind the equity chart, at startup.
 
 `/health` on the webhook port also shows `ea_last_report_seconds_ago`,
 `broker_connected` and `algo_trading_allowed`. It shows no account data.
@@ -96,6 +108,70 @@ the Docker host's LAN IP.
   market entries received. Resting limits are left out, because most of
   them are cancelled by design.
 - **Win rate** = closed positions with positive net PnL ÷ closed positions.
+- **Closed trades** come from MT5's deal history, grouped by position ID:
+  entry and exit are the volume-weighted prices of the opening and closing
+  deals, net = gross + commission + swap. Trades the broker closed itself
+  (SL, TP, stop out) are included; their "Closed by" says so.
+- **Expectancy** = average net PnL per closed trade (and average pips).
+  **Average win/loss** leave out breakeven trades. **Profit factor** = gross
+  wins ÷ gross losses ("–" until there's a losing trade). **Max drawdown**
+  is the largest peak-to-trough fall of cumulative net PnL over the closed
+  trades in view, in close order.
+
+## Runs
+
+**Start new run** asks for a name and starts a run from now. From then on
+every tile, chart and table shows that run by default. The **Run** menu
+switches to an earlier run or to **All time**.
+
+- Nothing is deleted. A run only sets the dashboard's time window.
+- A trade belongs to the run it was **opened** in, so a position carried
+  over from the previous test doesn't count toward the new one.
+- Before the first run, the dashboard shows everything.
+- The run, pair and strategy you're looking at are kept in the page URL, so
+  a bookmark reopens the same view.
+
+## Strategies
+
+Pine scripts send `strategy=<tag>` on every message (see
+[the alert format](tradingview-alert-format.md#strategy-tag-strategytag)).
+The bridge stores it with each signal and works out each trade's strategy
+in this order:
+
+1. the entry signal's tag, matched to the position by order ticket;
+2. the magic number on the position's opening deal (EA v3.7+ opens tagged
+   orders with `MagicNumber × 1000 + slot`), which also covers trades whose
+   entry ack never reached the bridge;
+3. the order comment on the opening deal;
+4. a backfill rule (below);
+5. otherwise "untagged".
+
+### Backfilling older trades
+
+Trades from before the scripts sent a tag show as "untagged". If you know
+which strategy ran on each pair, add a rule per pair:
+
+```
+docker exec -u bridge pinebridge-bridge python -m app.backfill EURUSD=igt AUDUSD=sflow-v2
+docker exec -u bridge pinebridge-bridge python -m app.backfill --list
+```
+
+Each rule applies to untagged trades and signals on that symbol from before
+`--before` (default: now). It's stored as a rule, so the raw signals stay as
+received, and a tag in the data itself always wins.
+
+## Download
+
+**Download CSV** (`/api/export`) gives a zip with two files, for the run,
+pair and strategy you're looking at:
+
+- `trades.csv`: one row per closed trade: times (UTC), symbol, strategy,
+  side, lots, entry, exit, pips, gross, commission, swap, net, exit reason,
+  expected PnL at TradingView's prices, entry slippage, signal IDs.
+- `signals.csv`: the raw signal log, every column the bridge stores, plus
+  the resolved strategy.
+
+Text cells that start like a spreadsheet formula are prefixed with `'`.
 
 ## Settings (pinebridge-bridge)
 
@@ -104,7 +180,7 @@ the Docker host's LAN IP.
 | `DASHBOARD_PORT` | `8081` | `0` turns the dashboard off |
 | `DASHBOARD_PASSWORD` | empty | basic-auth password, any username |
 | `REPORT_PORT` | `5556` | where the EA sends reports; `0` turns them off |
-| `RETENTION_DAYS` | `90` | `0` keeps everything |
+| `RETENTION_DAYS` | `90` | days of account heartbeats (equity chart) to keep; `0` keeps everything. Signals and deals are never pruned |
 
 EA inputs: `EnableReports`, `ReportAddress`, `HeartbeatSec`.
 
