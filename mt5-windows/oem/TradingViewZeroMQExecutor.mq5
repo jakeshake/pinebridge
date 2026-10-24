@@ -43,9 +43,9 @@
 //|   3. Copy libzmq.dll & libsodium.dll to MQL5/Libraries/          |
 //|   4. Enable "Allow DLL imports" in MT5 Options                   |
 //+------------------------------------------------------------------+
-#property copyright "Pinebridge EA (TradingView ZeroMQ Executor) v3.7"
+#property copyright "Pinebridge EA (TradingView ZeroMQ Executor) v3.8"
 #property link      "https://github.com/ding9736/MQL5-ZeroMQ"
-#property version   "3.70"
+#property version   "3.80"
 #property strict
 
 // ZeroMQ library (ding9736 version)
@@ -85,6 +85,8 @@ input bool     NotifyConnection    = true;        // Push notification on broker
 input bool     EnableReports       = true;        // Push execution reports + heartbeat to the bridge
 input string   ReportAddress       = "tcp://172.17.0.1:5556"; // Bridge report port (Docker host from this server; else the bridge's LAN IP)
 input int      HeartbeatSec        = 30;          // Account heartbeat interval (seconds)
+input int      ReportHistoryDays   = 30;          // [v3.8] On start, re-send this many days of deals (0 = off)
+input int      HistoryResyncMin    = 30;          // [v3.8] Re-send the last 3 days of deals every N minutes (0 = off)
 
 //+------------------------------------------------------------------+
 //| Global Variables                                                  |
@@ -124,13 +126,17 @@ uint        g_ackRetcode = 0;
 string      g_ackClosed = "";
 datetime    g_disconnectedAt = 0;
 
+// [v3.8] Periodic history re-send, so the bridge catches deals it missed
+// (bridge restarted, report dropped) and swap the broker books separately.
+uint        g_lastResyncTick = 0;
+
 //+------------------------------------------------------------------+
 //| Expert initialization function                                    |
 //+------------------------------------------------------------------+
 int OnInit()
 {
    Log("====================================================");
-   Log("Pinebridge EA (TradingView ZeroMQ Executor) v3.7 Starting...");
+   Log("Pinebridge EA (TradingView ZeroMQ Executor) v3.8 Starting...");
    Log("  Using: ding9736/MQL5-ZeroMQ library");
    Log("====================================================");
 
@@ -152,6 +158,8 @@ int OnInit()
    }
 
    InitReports();
+   if(ReportHistoryDays > 0)
+      ReportHistory((datetime)(TimeCurrent() - (long)ReportHistoryDays * 86400));
 
    // Set timer for checking messages (as fast as possible)
    EventSetMillisecondTimer(TimerIntervalMs);
@@ -338,6 +346,7 @@ void OnTimer()
    MonitorConnection();
    RetryFailedCloses();
    SendHeartbeat(false);
+   ResyncHistory();
 }
 
 //+------------------------------------------------------------------+
@@ -569,16 +578,60 @@ string DealReasonText(long reason)
    return "other";
 }
 
-// Every deal on this EA's magic number, including SL/TP closes by the broker.
-void OnTradeTransaction(const MqlTradeTransaction &trans, const MqlTradeRequest &request, const MqlTradeResult &result)
+// [v3.8] MT5 stamps deals in the trade server's time zone. Reports carry
+// (server time - UTC) so the bridge can show real times. Rounded to a
+// quarter hour: TimeTradeServer() is the last quote's time, so it lags.
+long ServerOffset()
 {
-   if(g_reportSocket == NULL || trans.type != TRADE_TRANSACTION_DEAL_ADD) return;
-   ulong deal = trans.deal;
-   if(!HistoryDealSelect(deal)) return;
-   if(!IsOurMagic(HistoryDealGetInteger(deal, DEAL_MAGIC))) return;
-   long type = HistoryDealGetInteger(deal, DEAL_TYPE);
-   if(type != DEAL_TYPE_BUY && type != DEAL_TYPE_SELL) return;
+   long diff = (long)(TimeTradeServer() - TimeGMT());
+   return (long)MathRound(diff / 900.0) * 900;
+}
 
+// [v3.8] Brokers such as Forex.com book overnight swap as a separate balance
+// deal (magic 0, comment ">Swap #<position>") instead of on the position's
+// own deals. Returns that position ID, or 0 if the deal isn't one.
+ulong SwapPositionOf(string comment)
+{
+   if(StringFind(comment, "Swap") < 0 && StringFind(comment, "swap") < 0 &&
+      StringFind(comment, "Rollover") < 0 && StringFind(comment, "rollover") < 0) return 0;
+   int hash = StringFind(comment, "#");
+   if(hash < 0) return 0;
+   string digits = "";
+   for(int i = hash + 1; i < StringLen(comment); i++)
+   {
+      ushort c = StringGetCharacter(comment, i);
+      if(c < '0' || c > '9') break;
+      digits += ShortToString(c);
+   }
+   return digits == "" ? 0 : (ulong)StringToInteger(digits);
+}
+
+// Does this position belong to the EA? Uses the open position if there is
+// one, else the position's history (this changes the history selection).
+bool IsOurPosition(ulong positionId, string &symbol)
+{
+   if(PositionSelectByTicket(positionId))
+   {
+      symbol = PositionGetString(POSITION_SYMBOL);
+      return IsOurMagic(PositionGetInteger(POSITION_MAGIC));
+   }
+   if(!HistorySelectByPosition(positionId)) return false;
+   for(int i = 0; i < HistoryDealsTotal(); i++)
+   {
+      ulong d = HistoryDealGetTicket(i);
+      if(d > 0 && IsOurMagic(HistoryDealGetInteger(d, DEAL_MAGIC)))
+      {
+         symbol = HistoryDealGetString(d, DEAL_SYMBOL);
+         return true;
+      }
+   }
+   return false;
+}
+
+// One trade deal (buy/sell on our magic). The deal must be selected.
+void ReportTradeDeal(ulong deal, bool backfill)
+{
+   long type = HistoryDealGetInteger(deal, DEAL_TYPE);
    long entry = HistoryDealGetInteger(deal, DEAL_ENTRY);
    string entryText = entry == DEAL_ENTRY_IN ? "in" : entry == DEAL_ENTRY_OUT ? "out"
                     : entry == DEAL_ENTRY_INOUT ? "inout" : "out_by";
@@ -595,9 +648,119 @@ void OnTradeTransaction(const MqlTradeTransaction &trans, const MqlTradeRequest 
               + "," + JNum("commission", HistoryDealGetDouble(deal, DEAL_COMMISSION), 2)
               + "," + JNum("swap", HistoryDealGetDouble(deal, DEAL_SWAP), 2)
               + "," + JNum("time", HistoryDealGetInteger(deal, DEAL_TIME_MSC) / 1000.0, 3)
+              + "," + JInt("server_offset", ServerOffset()) + "," + JBool("backfill", backfill)
+              + "," + JStr("kind", "trade")
               + "," + JStr("reason", DealReasonText(HistoryDealGetInteger(deal, DEAL_REASON)))
               + "," + JInt("magic", HistoryDealGetInteger(deal, DEAL_MAGIC))
               + "," + JStr("comment", HistoryDealGetString(deal, DEAL_COMMENT)) + "}");
+}
+
+// A broker swap/rollover balance deal, reported against its position.
+void ReportSwapDeal(ulong deal, long dealTimeMsc, double amount, string comment,
+                    ulong positionId, string symbol, bool backfill)
+{
+   SendReport("{" + JStr("type", "deal") + "," + JInt("deal", (long)deal)
+              + "," + JInt("order", 0) + "," + JInt("position_id", (long)positionId)
+              + "," + JStr("symbol", symbol) + "," + JStr("entry", "adjust")
+              + "," + JNum("volume", 0, 2) + "," + JNum("price", 0, 2)
+              + "," + JNum("profit", 0, 2) + "," + JNum("commission", 0, 2)
+              + "," + JNum("swap", amount, 2)
+              + "," + JNum("time", dealTimeMsc / 1000.0, 3)
+              + "," + JInt("server_offset", ServerOffset()) + "," + JBool("backfill", backfill)
+              + "," + JStr("kind", "swap") + "," + JStr("reason", "swap")
+              + "," + JInt("magic", 0) + "," + JStr("comment", comment) + "}");
+}
+
+// Every deal on this EA's magic number, including SL/TP closes by the broker,
+// and [v3.8] the broker's separate swap deals for our positions.
+void OnTradeTransaction(const MqlTradeTransaction &trans, const MqlTradeRequest &request, const MqlTradeResult &result)
+{
+   if(g_reportSocket == NULL || trans.type != TRADE_TRANSACTION_DEAL_ADD) return;
+   ulong deal = trans.deal;
+   if(!HistoryDealSelect(deal)) return;
+   long type = HistoryDealGetInteger(deal, DEAL_TYPE);
+   if(type == DEAL_TYPE_BUY || type == DEAL_TYPE_SELL)
+   {
+      if(IsOurMagic(HistoryDealGetInteger(deal, DEAL_MAGIC)))
+         ReportTradeDeal(deal, false);
+      return;
+   }
+   // Read everything first: IsOurPosition() may change the history selection.
+   string comment = HistoryDealGetString(deal, DEAL_COMMENT);
+   ulong positionId = SwapPositionOf(comment);
+   if(positionId == 0) return;
+   long timeMsc = HistoryDealGetInteger(deal, DEAL_TIME_MSC);
+   double amount = HistoryDealGetDouble(deal, DEAL_PROFIT) + HistoryDealGetDouble(deal, DEAL_SWAP);
+   string symbol = "";
+   if(IsOurPosition(positionId, symbol))
+      ReportSwapDeal(deal, timeMsc, amount, comment, positionId, symbol, false);
+}
+
+// [v3.8] Re-send every deal since `from` (ours, plus swap deals for our
+// positions). The bridge stores deals by ticket, so repeats are harmless.
+void ReportHistory(datetime from)
+{
+   if(g_reportSocket == NULL) return;
+   if(!HistorySelect(from, TimeCurrent() + 86400)) return;
+   int total = HistoryDealsTotal();
+   ulong ours[];          // our position IDs seen in this window
+   string oursSymbol[];
+   ulong swapDeals[];     // swap deals, matched after the trade pass
+   int sent = 0;
+   for(int i = 0; i < total; i++)
+   {
+      ulong deal = HistoryDealGetTicket(i);
+      if(deal == 0) continue;
+      long type = HistoryDealGetInteger(deal, DEAL_TYPE);
+      if(type == DEAL_TYPE_BUY || type == DEAL_TYPE_SELL)
+      {
+         if(!IsOurMagic(HistoryDealGetInteger(deal, DEAL_MAGIC))) continue;
+         ReportTradeDeal(deal, true);
+         sent++;
+         ulong pos = (ulong)HistoryDealGetInteger(deal, DEAL_POSITION_ID);
+         int n = ArraySize(ours);
+         bool seen = false;
+         for(int k = 0; k < n; k++) if(ours[k] == pos) { seen = true; break; }
+         if(!seen)
+         {
+            ArrayResize(ours, n + 1); ArrayResize(oursSymbol, n + 1);
+            ours[n] = pos; oursSymbol[n] = HistoryDealGetString(deal, DEAL_SYMBOL);
+         }
+      }
+      else if(SwapPositionOf(HistoryDealGetString(deal, DEAL_COMMENT)) > 0)
+      {
+         int m = ArraySize(swapDeals);
+         ArrayResize(swapDeals, m + 1);
+         swapDeals[m] = deal;
+      }
+   }
+   for(int j = 0; j < ArraySize(swapDeals); j++)
+   {
+      ulong deal = swapDeals[j];
+      string comment = HistoryDealGetString(deal, DEAL_COMMENT);
+      ulong pos = SwapPositionOf(comment);
+      for(int k = 0; k < ArraySize(ours); k++)
+      {
+         if(ours[k] != pos) continue;
+         ReportSwapDeal(deal, HistoryDealGetInteger(deal, DEAL_TIME_MSC),
+                        HistoryDealGetDouble(deal, DEAL_PROFIT) + HistoryDealGetDouble(deal, DEAL_SWAP),
+                        comment, pos, oursSymbol[k], true);
+         sent++;
+         break;
+      }
+   }
+   Log("History re-sent to the bridge: " + IntegerToString(sent) + " deals since "
+       + TimeToString(from, TIME_DATE | TIME_MINUTES) + " (server offset "
+       + IntegerToString(ServerOffset() / 60) + " min)");
+}
+
+void ResyncHistory()
+{
+   if(g_reportSocket == NULL || HistoryResyncMin <= 0) return;
+   if(g_lastResyncTick != 0 && GetTickCount() - g_lastResyncTick < (uint)HistoryResyncMin * 60000) return;
+   if(g_lastResyncTick == 0) { g_lastResyncTick = GetTickCount(); return; }   // OnInit already sent history
+   g_lastResyncTick = GetTickCount();
+   ReportHistory((datetime)(TimeCurrent() - 3 * 86400));
 }
 
 void SendHeartbeat(bool force)
@@ -636,7 +799,8 @@ void SendHeartbeat(bool force)
               + "," + JBool("connected", (bool)TerminalInfoInteger(TERMINAL_CONNECTED))
               + "," + JBool("terminal_trade_allowed", (bool)TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
               + "," + JBool("ea_trade_allowed", (bool)MQLInfoInteger(MQL_TRADE_ALLOWED))
-              + "," + JStr("ea_version", "3.7")
+              + "," + JStr("ea_version", "3.8")
+              + "," + JInt("server_offset", ServerOffset())
               + "," + JInt("magic", (long)MagicNumber)
               + "," + JInt("pending_close_retries", ArraySize(g_retryTickets))
               + ",\"positions\":[" + positions + "]}");

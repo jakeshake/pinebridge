@@ -10,7 +10,9 @@ heartbeats (one every ~30 s, used for the equity chart) are pruned.
 Every write is best-effort from the caller's point of view: the webhook
 path wraps store calls so a storage problem can never block a trade.
 """
+import bisect
 import json
+import re
 import sqlite3
 import threading
 import time
@@ -62,7 +64,22 @@ MIGRATIONS = [
     ("signals", "strategy", "TEXT"),
     ("deals", "magic", "INTEGER"),
     ("deals", "comment", "TEXT"),
+    # MT5 stamps deals in the trade server's time zone, not UTC. time_raw is
+    # what the EA sent; server_offset is (server time - UTC) in seconds.
+    ("deals", "time_raw", "REAL"),
+    ("deals", "server_offset", "REAL"),
+    ("deals", "offset_trusted", "INTEGER"),
+    ("deals", "kind", "TEXT"),
+    ("signals", "reason", "TEXT"),
 ]
+
+# A server's UTC offset is a whole quarter hour between -12 h and +14 h.
+OFFSET_STEP = 900
+MAX_OFFSET = 15 * 3600
+
+
+def _round_offset(seconds):
+    return round(seconds / OFFSET_STEP) * OFFSET_STEP
 
 ENTRY_ACTIONS = {"BUY", "SELL"}
 DEFAULT_MAGIC = 777777       # the EA's MagicNumber input default
@@ -101,6 +118,17 @@ def _vwap(deals):
     return sum((d["price"] or 0) * (d["volume"] or 0) for d in deals) / vol
 
 
+def _exit_reason(outs, exit_signal):
+    """The broker's reason for the closing deal; when the EA closed it on a
+    signal that said why (`reason=time` in the alert), "ea:time"."""
+    if not outs:
+        return None
+    reason = outs[-1]["reason"]
+    if reason == "ea" and exit_signal and exit_signal.get("reason"):
+        return "ea:" + exit_signal["reason"]
+    return reason
+
+
 def _avg(values):
     values = [v for v in values if v is not None]
     return sum(values) / len(values) if values else None
@@ -137,6 +165,12 @@ class Store:
             if column not in have:
                 self._db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
         self._db.execute("CREATE INDEX IF NOT EXISTS signals_strategy ON signals(strategy)")
+        # Deals stored before the time-zone fix hold raw server time in `time`.
+        self._db.execute("UPDATE deals SET time_raw = time WHERE time_raw IS NULL")
+        # Closes acked before "no position" existed that closed nothing.
+        self._db.execute(
+            "UPDATE signals SET status='no position' WHERE status='executed' AND action LIKE 'CLOSE%'"
+            " AND (closed_tickets IS NULL OR closed_tickets IN ('', ',,')) AND detail LIKE '%Closed: 0,%'")
         self._db.commit()
 
     def _write(self, sql, args=()):
@@ -156,8 +190,8 @@ class Store:
         symbol = str(ea_signal.get("symbol") or parsed.get("symbol") or "").upper()
         self._write(
             "INSERT OR REPLACE INTO signals(signal_id, received_at, signal, action, symbol, volume,"
-            " tv_price, tv_time, zone, status, detail, pip_size, strategy)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " tv_price, tv_time, zone, status, detail, pip_size, strategy, reason)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 signal_id, time.time(), str(parsed.get("signal", "")), ea_signal.get("action"),
                 symbol, _num(ea_signal.get("size")), tv_reference_price(parsed),
@@ -165,6 +199,7 @@ class Store:
                 f"{parsed.get('zone_src', '')}#{parsed['zone_id']}" if "zone_id" in parsed else None,
                 status, detail, get_pip_size(symbol) if symbol else None,
                 normalize_strategy(parsed.get("strategy")),
+                normalize_strategy(parsed.get("reason")),
             ),
         )
 
@@ -178,12 +213,19 @@ class Store:
 
     def apply_ack(self, r):
         closed = r.get("closed_tickets") or []
+        status = "executed" if r.get("ok") else "failed"
+        if r.get("ok") and not closed and re.search(r"Closed:\s*0\b", str(r.get("detail") or "")):
+            # A close that found nothing to close: TradingView and MT5 disagree
+            # about the position. Not an execution, so don't call it one.
+            row = self._rows("SELECT action FROM signals WHERE signal_id=?", (r.get("signal_id"),))
+            if row and str(row[0]["action"] or "").startswith("CLOSE"):
+                status = "no position"
         self._write(
             "UPDATE signals SET status=?, detail=?, retcode=?, acked_at=?, ea_ms=?, order_ticket=?,"
             " requested_price=?, fill_price=?, fill_volume=?, tick_size=?, tick_value=?, closed_tickets=?"
             " WHERE signal_id=?",
             (
-                "executed" if r.get("ok") else "failed", r.get("detail", ""), r.get("retcode"),
+                status, r.get("detail", ""), r.get("retcode"),
                 time.time(), _num(r.get("ea_ms")), r.get("order") or None,
                 _num(r.get("requested_price")) or None, _num(r.get("fill_price")) or None,
                 _num(r.get("volume")) or None, _num(r.get("tick_size")), _num(r.get("tick_value")),
@@ -192,17 +234,45 @@ class Store:
             ),
         )
 
-    def add_deal(self, r):
+    def add_deal(self, r, received_at=None):
+        """Store one deal report. `time` is MT5 server time, not UTC.
+
+        A live report reaches the bridge within moments of the deal, so
+        (server time - now) is the server's UTC offset plus a little
+        latency; rounded to a quarter hour that is exact and needs nothing
+        from the EA's own clock or time-zone settings. A report that took
+        more than a minute to arrive (queued while the bridge was down, or
+        a v3.8 history re-send) can't be measured that way and falls back
+        to the EA's `server_offset`, untrusted, so it never overwrites an
+        offset a live report already measured. Re-sending a deal is harmless."""
+        raw = _num(r.get("time"))
+        offset, trusted = _num(r.get("server_offset")), 0
+        if raw is not None and not r.get("backfill"):
+            diff = raw - (received_at if received_at is not None else time.time())
+            measured = _round_offset(diff)
+            if abs(diff - measured) <= 60 and abs(measured) <= MAX_OFFSET:
+                offset, trusted = measured, 1
         self._write(
-            "INSERT OR REPLACE INTO deals(deal, order_ticket, position_id, symbol, side, entry, volume,"
-            " price, profit, commission, swap, time, reason, magic, comment)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO deals(deal, order_ticket, position_id, symbol, side, entry, volume,"
+            " price, profit, commission, swap, time, time_raw, reason, magic, comment,"
+            " server_offset, offset_trusted, kind)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            " ON CONFLICT(deal) DO UPDATE SET"
+            " order_ticket=excluded.order_ticket, position_id=excluded.position_id,"
+            " symbol=excluded.symbol, side=excluded.side, entry=excluded.entry,"
+            " volume=excluded.volume, price=excluded.price, profit=excluded.profit,"
+            " commission=excluded.commission, swap=excluded.swap, time=excluded.time,"
+            " time_raw=excluded.time_raw, reason=excluded.reason, magic=excluded.magic,"
+            " comment=excluded.comment, kind=excluded.kind,"
+            " server_offset=CASE WHEN deals.offset_trusted=1 AND excluded.offset_trusted=0"
+            "   THEN deals.server_offset ELSE COALESCE(excluded.server_offset, deals.server_offset) END,"
+            " offset_trusted=MAX(COALESCE(deals.offset_trusted, 0), excluded.offset_trusted)",
             (
                 r.get("deal"), r.get("order"), r.get("position_id"), r.get("symbol"),
                 r.get("side"), r.get("entry"), _num(r.get("volume")), _num(r.get("price")),
                 _num(r.get("profit")) or 0.0, _num(r.get("commission")) or 0.0,
-                _num(r.get("swap")) or 0.0, _num(r.get("time")), r.get("reason"),
-                _int(r.get("magic")), r.get("comment"),
+                _num(r.get("swap")) or 0.0, _num(r.get("time")), _num(r.get("time")), r.get("reason"),
+                _int(r.get("magic")), r.get("comment"), offset, trusted, r.get("kind") or "trade",
             ),
         )
 
@@ -284,11 +354,66 @@ class Store:
 
     # ---- building blocks ------------------------------------------------
 
+    @staticmethod
+    def _to_utc(sigs, deals):
+        """Set each deal's `time` to UTC from its raw MT5 server time.
+
+        Offsets come from, in order: the EA's live report (exact); else the
+        nearest "anchor", i.e. an entry deal whose ack the bridge stamped in
+        UTC, so (deal server time - ack time) rounded to a quarter hour is
+        the server's offset at that moment, DST included; else the offset
+        the EA sent with a history re-send; else 0 (old EA, no anchors).
+        Returns the latest known offset, for the heartbeat's positions."""
+        acked = {s["order_ticket"]: s["acked_at"] for s in sigs if s["order_ticket"] and s["acked_at"]}
+        anchors = []    # (raw server time, offset)
+        for d in deals:
+            raw = d.get("time_raw") if d.get("time_raw") is not None else d.get("time")
+            d["time_raw"] = raw
+            if raw is None:
+                continue
+            if d.get("offset_trusted") and d.get("server_offset") is not None:
+                anchors.append((raw, d["server_offset"]))
+            elif d.get("entry") in ("in", "inout") and d.get("order_ticket") in acked:
+                diff = raw - acked[d["order_ticket"]]
+                if abs(diff) <= MAX_OFFSET:
+                    anchors.append((raw, _round_offset(diff)))
+        anchors.sort()
+        times = [a[0] for a in anchors]
+
+        def nearest(raw):
+            if not anchors:
+                return None
+            i = bisect.bisect_left(times, raw)
+            near = [anchors[j] for j in (i - 1, i) if 0 <= j < len(anchors)]
+            return min(near, key=lambda a: abs(a[0] - raw))[1]
+
+        for d in deals:
+            raw = d["time_raw"]
+            if raw is None:
+                continue
+            if d.get("offset_trusted") and d.get("server_offset") is not None:
+                offset = d["server_offset"]
+            else:
+                offset = nearest(raw)
+                if offset is None:
+                    offset = d.get("server_offset") or 0
+            d["time"] = raw - offset
+        return anchors[-1][1] if anchors else None
+
     def _load(self):
         sigs = self._rows("SELECT * FROM signals ORDER BY received_at")
-        deals = self._rows("SELECT * FROM deals WHERE position_id IS NOT NULL ORDER BY time, deal")
+        deals = self._rows("SELECT * FROM deals WHERE position_id IS NOT NULL")
         rules = self.backfill_rules()
         ea = self.ea_status()
+        offset_now = self._to_utc(sigs, deals)
+        deals.sort(key=lambda d: (d["time"] or 0, d["deal"]))
+        if ea:
+            hb_offset = _num(ea.get("server_offset"))
+            shift = offset_now if offset_now is not None else (hb_offset or 0)
+            ea = {**ea, "positions": [
+                {**p, "opened_at": _num(p["opened_at"]) - shift}
+                if _num(p.get("opened_at")) is not None else p
+                for p in ea.get("positions") or []]}
         known = sorted({s["strategy"] for s in sigs if s["strategy"]} | {r["strategy"] for r in rules})
         slots = {strategy_slot(t): t for t in known}
         base_magic = _int((ea or {}).get("magic")) or DEFAULT_MAGIC
@@ -364,7 +489,7 @@ class Store:
             outs = [d for d in ds if d["entry"] in OUT_ENTRIES]
             vol_in = sum(d["volume"] or 0 for d in ins)
             vol_out = sum(d["volume"] or 0 for d in outs)
-            symbol = ds[0]["symbol"]
+            symbol = next((d["symbol"] for d in ins + outs + ds if d["symbol"]), None)
             entry = entry_sig.get(pos_id) or next(
                 (entry_sig[d["order_ticket"]] for d in ins if d["order_ticket"] in entry_sig), None)
             exit_ = exit_sig.get(pos_id)
@@ -411,9 +536,11 @@ class Store:
                 "swap": sum(d["swap"] or 0 for d in ds),
                 "costs": costs,
                 "net_pnl": gross + costs,
-                "actual_pnl": gross + costs,
+                # Swap is carry, not execution: TradingView's prices can't
+                # predict it, so the expected-vs-actual gap leaves it out.
+                "actual_pnl": gross + sum(d["commission"] or 0 for d in ds),
                 "expected_pnl": expected,
-                "exit_reason": outs[-1]["reason"] if outs else None,
+                "exit_reason": _exit_reason(outs, exit_),
                 "entry_signal_id": entry and entry["signal_id"],
                 "exit_signal_id": exit_ and exit_["signal_id"],
                 "entry_slip_tv_pips": entry_slip,
@@ -501,7 +628,7 @@ class Store:
             "equity": ea and ea.get("equity"),
             "currency": ea and ea.get("currency"),
             "expected_pnl": sum(t["expected_pnl"] for t in compared) if compared else None,
-            "actual_pnl_compared": sum(t["net_pnl"] for t in compared) if compared else None,
+            "actual_pnl_compared": sum(t["actual_pnl"] for t in compared) if compared else None,
             "compared_trades": len(compared),
         }
 

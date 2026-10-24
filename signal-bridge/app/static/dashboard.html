@@ -72,6 +72,7 @@
   .st::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
   .st.executed::before { background: var(--good); } .st.failed::before, .st.rejected::before,
   .st.not-delivered::before { background: var(--critical); } .st.sent::before { background: var(--warning); }
+  .st.no-position::before { background: var(--warning); }
   footer { color: var(--text-muted); font-size: 12px; padding: 0 16px 24px; max-width: 1400px; margin: 0 auto; }
   footer a { color: var(--text-secondary); }
   .error { color: var(--critical); }
@@ -177,7 +178,9 @@
   TradingView's data feed, not your broker's quotes. It includes the difference between the two feeds
   as well as real execution slippage. "Broker slippage" compares the fill with the price MT5 quoted when
   the order was sent. Expected PnL prices the same trades at TradingView's prices; the gap to actual PnL
-  is the total cost of execution.</p>
+  (before swap, which is carry rather than execution) is the total cost of execution.
+  "No position" marks a close that found nothing to close: TradingView and MT5 disagreed about
+  the position.</p>
   <p>Runs only change what the dashboard shows by default: signals and deals are never deleted, and
   "All time" always shows everything. A trade belongs to the run it was opened in.</p>
   <p id="updated"></p>
@@ -472,6 +475,12 @@ function renderPositions(rows) {
 }
 
 const EXIT_TEXT = { sl: "broker SL", tp: "broker TP", ea: "signal", stop_out: "stop out", manual: "manual" };
+// "ea:time" = the EA closed it on a signal whose alert said reason=time.
+function exitText(r) {
+  if (!r) return "–";
+  if (r.startsWith("ea:")) return "signal · " + r.slice(3);
+  return EXIT_TEXT[r] || r;
+}
 
 function renderTrades(rows) {
   table($("trades"), [
@@ -488,7 +497,7 @@ function renderTrades(rows) {
     { label: "Comm + swap", num: 1, get: (t) => money(t.costs) },
     { label: "Net PnL", num: 1, cls: (t) => pnlClass(t.net_pnl), get: (t) => money(t.net_pnl) },
     { label: "Duration", num: 1, get: (t) => duration(t.duration_s) },
-    { label: "Closed by", get: (t) => EXIT_TEXT[t.exit_reason] || t.exit_reason || "–" },
+    { label: "Closed by", get: (t) => exitText(t.exit_reason) },
   ], rows || [], "No closed trades in this view yet.");
 }
 
