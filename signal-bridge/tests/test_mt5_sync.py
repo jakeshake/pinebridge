@@ -168,3 +168,15 @@ def test_heartbeat_position_open_time_is_utc(store):
                                                    "opened_at": int(T0 + OFFSET)}]})
     pos = store.overview(store.filters("all"))["positions"][0]
     assert pos["opened_at"] == pytest.approx(int(T0 + OFFSET) - OFFSET)
+
+
+def test_old_close_that_closed_nothing_is_relabelled_on_upgrade(tmp_path):
+    path = str(tmp_path / "old.db")
+    s = Store(path)
+    s.record_signal("c3", {"signal": "closeshort", "symbol": "USDJPY"},
+                    {"action": "CLOSESHORT", "symbol": "USDJPY"})
+    with sqlite3.connect(path) as db:   # as the old bridge stored it
+        db.execute("UPDATE signals SET status='executed', detail='Close summary - Closed: 0, Failed: 0'"
+                   " WHERE signal_id='c3'")
+    rows = Store(path).overview(Store(path).filters("all"))["signals"]
+    assert rows[0]["status"] == "no position"

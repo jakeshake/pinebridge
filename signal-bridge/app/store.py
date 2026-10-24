@@ -167,6 +167,10 @@ class Store:
         self._db.execute("CREATE INDEX IF NOT EXISTS signals_strategy ON signals(strategy)")
         # Deals stored before the time-zone fix hold raw server time in `time`.
         self._db.execute("UPDATE deals SET time_raw = time WHERE time_raw IS NULL")
+        # Closes acked before "no position" existed that closed nothing.
+        self._db.execute(
+            "UPDATE signals SET status='no position' WHERE status='executed' AND action LIKE 'CLOSE%'"
+            " AND (closed_tickets IS NULL OR closed_tickets IN ('', ',,')) AND detail LIKE '%Closed: 0,%'")
         self._db.commit()
 
     def _write(self, sql, args=()):
