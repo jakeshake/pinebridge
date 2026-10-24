@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased: Pinebridge and MT5 history in sync
+
+- **Times:** MT5 stamps deals in the trade server's time zone, not UTC, so
+  closed trades showed the server's offset late (e.g. +3 h on Forex.com).
+  The bridge now measures the offset from when each live deal report
+  arrives and converts to UTC. Trades already stored are corrected from
+  their entry acks. Run membership, durations and CSV exports use the
+  corrected times.
+- **Swap:** brokers such as Forex.com book overnight swap as a separate
+  balance deal (`>Swap #<position>`), which never reached the dashboard, so
+  "Comm + swap" read 0.00. EA v3.8 reports those deals against their
+  position. Swap counts in net PnL but not in the expected-vs-actual
+  "cost of execution", since it's carry, not execution.
+- **EA v3.8:** on start it re-sends the last `ReportHistoryDays` (30) of
+  deals, and every `HistoryResyncMin` (30) minutes the last 3 days, so
+  history missed while the bridge was down, and swap already charged,
+  fills in. Reports and the heartbeat carry `server_offset`. Recompile, then
+  remove the EA from the chart and attach it again.
+- **"No position" status:** a close that found nothing to close is no
+  longer shown as "executed". It means TradingView and MT5 disagreed about
+  the position.
+- **Exit reasons:** an optional `reason=<word>` on an exit alert (e.g.
+  `reason=time`) shows in "Closed by" as "signal · time".
+
 ## Unreleased: runs, per-trade PnL and strategy attribution
 
 - **Runs:** "Start new run" (named, confirmed) resets the dashboard to a new

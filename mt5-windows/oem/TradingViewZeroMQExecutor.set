@@ -23,3 +23,5 @@ NotifyConnection=true
 EnableReports=true
 ReportAddress=tcp://172.17.0.1:5556
 HeartbeatSec=30
+ReportHistoryDays=30
+HistoryResyncMin=30

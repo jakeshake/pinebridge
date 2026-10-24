@@ -4,7 +4,10 @@ connects and PUSHes) and hands them to the store.
 Report types (JSON, one per message):
   ack      -- result of one signal, echoing its signal_id
   deal     -- every deal on the account for the EA's magic number,
-              including broker-side SL/TP closes nobody signalled
+              including broker-side SL/TP closes nobody signalled, and
+              (EA v3.8+) the broker's separate swap deals for those
+              positions (entry "adjust", kind "swap"). Times are MT5
+              server time; the store converts them to UTC.
   account  -- heartbeat: balance/equity/margin, broker connection,
               algo-trading permissions, open positions
 """

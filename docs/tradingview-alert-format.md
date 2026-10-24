@@ -53,6 +53,11 @@ whatever their tag.
 signal=closelong,symbol=EURUSD,secret=YOUR_SECRET
 ```
 
+Optionally add `reason=<word>` (lowercase, at most 16 characters) to say
+why the strategy closed, e.g. `reason=time` for a time stop or
+`reason=reverse`. The dashboard's "Closed by" column then shows
+"signal · time" instead of just "signal".
+
 ## Modify an open position's SL/TP
 
 ```
