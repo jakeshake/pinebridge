@@ -1,5 +1,6 @@
 <?xml version="1.0"?>
 <Container version="2">
+  <Deprecated>true</Deprecated>
   <Name>pinebridge-bridge</Name>
   <Repository>ghcr.io/jakeshake/pinebridge-bridge:latest</Repository>
   <Registry>https://github.com/jakeshake/pinebridge/pkgs/container/pinebridge-bridge</Registry>
