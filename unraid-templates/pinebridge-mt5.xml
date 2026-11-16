@@ -1,5 +1,6 @@
 <?xml version="1.0"?>
 <Container version="2">
+  <Deprecated>true</Deprecated>
   <Name>pinebridge-mt5</Name>
   <Repository>ghcr.io/jakeshake/pinebridge-mt5:latest</Repository>
   <Registry>https://github.com/jakeshake/pinebridge/pkgs/container/pinebridge-mt5</Registry>
