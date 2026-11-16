@@ -47,6 +47,7 @@ VALID_ACTIONS = {
     "ARM_LONG", "ARM_SHORT", "CANCEL_LONG", "CANCEL_SHORT",
 }
 
+CLOSE_ACTIONS = {"CLOSE", "CLOSELONG", "CLOSESHORT"}
 UNTAGGED = "untagged"
 ENTRY_ACTIONS = {"BUY", "SELL", "ARM_LONG", "ARM_SHORT"}
 _TAG_BAD = re.compile(r"[^a-z0-9._-]+")
@@ -228,6 +229,12 @@ def translate(parsed_data):
         "comment": str(parsed_data.get("comment", "TV-Signal")),
         "timestamp": _now(),
     }
+    # Exits only: close_lots asks the EA to close just that much volume,
+    # oldest position first (FIFO), instead of everything on the symbol.
+    # Sent only when the alert carries a size, so plain exits keep
+    # closing all positions exactly as before.
+    if action in CLOSE_ACTIONS and any(k in parsed_data for k in ("qty", "size", "risk_lots")):
+        ea_signal["close_lots"] = size
     # Entries only: lets the EA recognise a double-down add (dd=1) and
     # reconcile a bar-close entry against a resting limit that already
     # filled on the same zone.
@@ -253,6 +260,9 @@ def describe(ea_signal):
             f"sl={ea_signal.get('sl_pips')}pips tp={ea_signal.get('tp_pips')}pips "
             f"zone={ea_signal.get('zone_src')}#{ea_signal.get('zone_id')}"
         )
+    if action in CLOSE_ACTIONS:
+        lots = ea_signal.get("close_lots")
+        return f"{action} {symbol} " + (f"close_lots={lots}" if lots is not None else "all")
     return (
         f"{action} {symbol} size={ea_signal.get('size')} "
         f"sl={ea_signal.get('sl_pips')}pips tp={ea_signal.get('tp_pips')}pips"

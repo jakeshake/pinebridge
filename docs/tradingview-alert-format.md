@@ -53,6 +53,20 @@ whatever their tag.
 signal=closelong,symbol=EURUSD,secret=YOUR_SECRET
 ```
 
+Without a size, an exit closes every matching position on the symbol.
+
+**Close by quantity (EA v3.9+).** Add `qty` (units) or `size` (lots) to
+close only that much, oldest position first, as FIFO accounts require. If
+the amount ends inside a position, the EA closes part of it, and the rest
+keeps its ticket and its own SL/TP. A size at or above what is open closes
+everything; with nothing open the exit does nothing. A failed partial close
+is not retried automatically (the retry queue closes whole tickets); you
+get a push notification to close it by hand.
+
+```
+signal=closelong,symbol=USDJPY,qty=1000,strategy=yre-v1,reason=time,secret=YOUR_SECRET
+```
+
 Optionally add `reason=<word>` (lowercase, at most 16 characters) to say
 why the strategy closed, e.g. `reason=time` for a time stop or
 `reason=reverse`. The dashboard's "Closed by" column then shows

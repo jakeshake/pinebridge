@@ -123,3 +123,40 @@ def test_non_signal_alerts_get_a_clear_error(client, body):
     assert r.status_code == 400
     assert "no signal= field" in r.get_json()["message"]
     assert client.sent == []
+
+
+# --- close by quantity -------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "body, action",
+    [
+        ("signal=closelong,symbol=USDJPY,strategy=yfl-v4,reason=time", "CLOSELONG"),
+        ("signal=closeshort,symbol=EURUSD,close_price=1.08000", "CLOSESHORT"),
+        ("signal=close,symbol=USDJPY", "CLOSE"),
+    ],
+)
+def test_exit_without_size_closes_everything(body, action):
+    # No qty/size: the EA gets no close_lots and closes all positions,
+    # exactly as before close-by-quantity existed.
+    sig = tr(body)
+    assert sig["action"] == action
+    assert "close_lots" not in sig
+    assert translate.describe(sig).endswith(" all")
+
+
+def test_closelong_with_qty_closes_that_many_lots():
+    sig = tr("signal=closelong,symbol=USDJPY,qty=1000,strategy=yre-v1,reason=time")
+    assert sig["action"] == "CLOSELONG"
+    assert sig["close_lots"] == pytest.approx(0.01)
+    assert "close_lots=0.01" in translate.describe(sig)
+
+
+def test_closeshort_with_size_in_lots():
+    sig = tr("signal=closeshort,symbol=EURUSD,size=0.03")
+    assert sig["close_lots"] == pytest.approx(0.03)
+
+
+def test_entries_never_carry_close_lots():
+    sig = tr("signal=long,symbol=USDJPY,qty=2000,entry_price=150.000,sl_price=149.000")
+    assert "close_lots" not in sig
+    assert sig["size"] == pytest.approx(0.02)

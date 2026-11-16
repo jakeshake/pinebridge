@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased: close by quantity
+
+- **Exits can carry a size:** `qty` (units) or `size` (lots) on a
+  `closelong` / `closeshort` / `close` closes only that much, oldest
+  position first (FIFO). Where the amount ends inside a position, EA v3.9
+  closes part of it; the rest keeps its own SL/TP. Lets a strategy hold two
+  legs on one symbol and close them separately.
+- **Unchanged without a size:** an exit with no `qty`/`size` still closes
+  every matching position on the symbol. The bridge only sends the new
+  `close_lots` field when the alert has a size.
+- **EA v3.9:** recompile, then remove the EA from the chart and attach it
+  again. A failed partial close is not queued for retry (the queue closes
+  whole tickets); it logs and sends a push notification instead.
+
 ## Unreleased: Pinebridge and MT5 history in sync
 
 - **Times:** MT5 stamps deals in the trade server's time zone, not UTC, so

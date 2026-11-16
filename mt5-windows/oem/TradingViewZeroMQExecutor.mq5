@@ -33,6 +33,11 @@
 //|       That whole magic family counts as this EA's own. Closes    |
 //|       use the position's magic; deal reports and the heartbeat   |
 //|       include magic and order comment. Untagged = as before.     |
+//| v3.9: Close by quantity. A CLOSELONG/CLOSESHORT/CLOSE carrying     |
+//|       close_lots closes only that volume, oldest position first   |
+//|       (FIFO), splitting a position with a partial close when the  |
+//|       volume ends inside it. The rest keeps its own SL/TP. Without |
+//|       close_lots a close still closes everything, as before.      |
 //|                                                                  |
 //| Receives signals INSTANTLY via ZeroMQ PULL socket from Flask.   |
 //| Latency: ~1-5ms from Flask to MT5                                |
@@ -43,9 +48,9 @@
 //|   3. Copy libzmq.dll & libsodium.dll to MQL5/Libraries/          |
 //|   4. Enable "Allow DLL imports" in MT5 Options                   |
 //+------------------------------------------------------------------+
-#property copyright "Pinebridge EA (TradingView ZeroMQ Executor) v3.8"
+#property copyright "Pinebridge EA (TradingView ZeroMQ Executor) v3.9"
 #property link      "https://github.com/ding9736/MQL5-ZeroMQ"
-#property version   "3.80"
+#property version   "3.90"
 #property strict
 
 // ZeroMQ library (ding9736 version)
@@ -534,6 +539,16 @@ bool ClosePositionAsOwner(ulong ticket)
    return ok;
 }
 
+// [v3.9] Partial close with the position's own magic, as above.
+bool ClosePartialAsOwner(ulong ticket, double lots)
+{
+   if(PositionSelectByTicket(ticket))
+      trade.SetExpertMagicNumber((ulong)PositionGetInteger(POSITION_MAGIC));
+   bool ok = trade.PositionClosePartial(ticket, lots);
+   trade.SetExpertMagicNumber(MagicNumber);
+   return ok;
+}
+
 // Called right after a successful market BUY/SELL.
 void RecordFill(double requestedPrice)
 {
@@ -1017,17 +1032,14 @@ bool ProcessSignal(string json)
       result = ExecuteTrade(action, symbol, size, slPips, tpPips, comment);
       trade.SetExpertMagicNumber(MagicNumber);
    }
-   else if(action == "CLOSELONG")
+   else if(action == "CLOSELONG" || action == "CLOSESHORT" || action == "CLOSE")
    {
-      result = ClosePositions(symbol, POSITION_TYPE_BUY);
-   }
-   else if(action == "CLOSESHORT")
-   {
-      result = ClosePositions(symbol, POSITION_TYPE_SELL);
-   }
-   else if(action == "CLOSE")
-   {
-      result = ClosePositions(symbol, -1);
+      // [v3.9] close_lots > 0 = close only that volume, oldest first.
+      // Absent (or 0) = close every matching position, as before.
+      double closeLots = ParseJsonDouble(json, "close_lots");
+      if(closeLots > 0) Log("Close lots: " + DoubleToString(closeLots, 2));
+      int posType = action == "CLOSELONG" ? POSITION_TYPE_BUY : action == "CLOSESHORT" ? POSITION_TYPE_SELL : -1;
+      result = ClosePositions(symbol, posType, closeLots);
    }
    else if(action == "ARM_LONG" || action == "ARM_SHORT")
    {
@@ -1246,12 +1258,14 @@ int CollectPositionsFifo(string symbol, int positionType, ulong &tickets[])
 //+------------------------------------------------------------------+
 //| Close positions for a symbol                                      |
 //+------------------------------------------------------------------+
-bool ClosePositions(string symbol, int positionType)
+bool ClosePositions(string symbol, int positionType, double closeLots = 0)
 {
    string typeStr = positionType == POSITION_TYPE_BUY ? "LONG" :
                     positionType == POSITION_TYPE_SELL ? "SHORT" : "ALL";
 
-   Log("Closing " + typeStr + " positions" + (symbol != "" ? " for " + symbol : ""));
+   Log("Closing " + typeStr + " positions" + (symbol != "" ? " for " + symbol : "")
+       + (closeLots > 0 ? " - " + DoubleToString(closeLots, 2) + " lots, oldest first" : ""));
+   double remaining = closeLots;   // [v3.9] <= 0 means close everything
 
    int closedCount = 0;
    int failedCount = 0;
@@ -1264,18 +1278,63 @@ bool ClosePositions(string symbol, int positionType)
 
    for(int i = 0; i < n; i++)
    {
+      if(closeLots > 0 && remaining < 1e-8) break;   // [v3.9] requested volume done
       ulong ticket = tickets[i];
       // Quote this leg will close against: bid for a long, ask for a short.
-      double quote = 0, vol = 0;
+      double quote = 0, vol = 0, lotStep = 0;
+      string posSym = symbol;
       if(PositionSelectByTicket(ticket))
       {
-         string posSym = PositionGetString(POSITION_SYMBOL);
+         posSym = PositionGetString(POSITION_SYMBOL);
          bool isLong = PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY;
          quote = SymbolInfoDouble(posSym, isLong ? SYMBOL_BID : SYMBOL_ASK);
          vol = PositionGetDouble(POSITION_VOLUME);
+         lotStep = SymbolInfoDouble(posSym, SYMBOL_VOLUME_STEP);
+      }
+      // [v3.9] The requested volume ends inside this position: close part
+      // of it. The remainder keeps its ticket and its own SL/TP. A failed
+      // partial is not queued for retry, because the retry queue closes
+      // whole tickets and would close more than was asked.
+      if(closeLots > 0 && vol > remaining + 1e-8)
+      {
+         double part = lotStep > 0 ? MathFloor(remaining / lotStep + 1e-6) * lotStep : remaining;
+         part = NormalizeDouble(part, 2);
+         if(part <= 0)
+         {
+            Log("SKIP: " + DoubleToString(remaining, 2) + " lots left is below the volume step - nothing more to close");
+            break;
+         }
+         if(ClosePartialAsOwner(ticket, part))
+         {
+            Log("OK: Closed " + DoubleToString(part, 2) + " of " + DoubleToString(vol, 2) + " lots on ticket " + IntegerToString((int)ticket));
+            closedCount++;
+            remaining -= part;
+            g_ackClosed += (g_ackClosed == "" ? "" : ",") + IntegerToString((long)ticket);
+            double fill = trade.ResultPrice();
+            if(fill <= 0 && trade.ResultDeal() > 0 && HistoryDealSelect(trade.ResultDeal()))
+               fill = HistoryDealGetDouble(trade.ResultDeal(), DEAL_PRICE);
+            if(fill > 0)
+            {
+               fillSum += fill * part;
+               quoteSum += quote * part;
+               volSum += part;
+            }
+            g_ackRetcode = trade.ResultRetcode();
+         }
+         else
+         {
+            g_ackRetcode = trade.ResultRetcode();
+            string msg = "Pinebridge: partial close of " + DoubleToString(part, 2) + " lots on ticket "
+                         + IntegerToString((long)ticket) + " failed (" + RetcodeText() + ") - close it manually";
+            Log("FAIL: " + msg);
+            if(NotifyConnection) SendNotification(StringSubstr(msg, 0, 255));
+            failedCount++;
+         }
+         break;   // anything after this position is newer and stays open
       }
       if(ClosePositionAsOwner(ticket))
       {
+         if(closeLots > 0) remaining -= vol;
          Log("OK: Closed ticket " + IntegerToString((int)ticket));
          closedCount++;
          g_ackClosed += (g_ackClosed == "" ? "" : ",") + IntegerToString((long)ticket);
